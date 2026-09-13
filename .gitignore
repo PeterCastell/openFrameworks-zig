@@ -1,0 +1,4 @@
+.zig-cache/
+zig-out/
+# fetched dependencies (zig 0.17 puts them here)
+zig-pkg/
