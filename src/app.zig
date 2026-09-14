@@ -5,7 +5,7 @@
 //!
 //! ```zig
 //! const App = struct {
-//!     pub fn setup(self: *App) void { ... }
+//!     pub fn setup(self: *App) void { ... }      // or `!void`: see below
 //!     pub fn update(self: *App) void { ... }
 //!     pub fn draw(self: *App) void { ... }
 //!     pub fn keyPressed(self: *App, key: of.KeyEventArgs) void { ... }
@@ -14,6 +14,10 @@
 //! var app: App = .{};
 //! _ = of.run(App, &app, .{ .width = 1024, .height = 768 });
 //! ```
+//!
+//! Any of these methods may return `!void`. oF drives them from the C++ main
+//! loop, where an error has nowhere to propagate to, so a returned error
+//! dumps its error return trace and panics at the throw site.
 const std = @import("std");
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
@@ -290,7 +294,12 @@ fn callbacksFor(comptime T: type) Callbacks {
 fn plainCallback(comptime T: type, comptime method: []const u8) PlainFn {
     return &struct {
         fn f(user: *anyopaque) callconv(.c) void {
-            @field(T, method)(self(T, user));
+            if (comptime throws(T, method)) {
+                @field(T, method)(self(T, user)) catch |err|
+                    panicError(method, err, @errorReturnTrace());
+            } else {
+                @field(T, method)(self(T, user));
+            }
         }
     }.f;
 }
@@ -301,11 +310,38 @@ fn eventCallback(comptime T: type, comptime method: []const u8, comptime Args: t
     return &struct {
         fn f(user: *anyopaque, args: *const Args) callconv(.c) void {
             const by_ref = Args == DragInfo or Args == Message;
-            if (by_ref) @field(T, method)(self(T, user), args) else @field(T, method)(self(T, user), args.*);
+            if (comptime throws(T, method)) {
+                if (by_ref)
+                    @field(T, method)(self(T, user), args) catch |err|
+                        panicError(method, err, @errorReturnTrace())
+                else
+                    @field(T, method)(self(T, user), args.*) catch |err|
+                        panicError(method, err, @errorReturnTrace());
+            } else {
+                if (by_ref) @field(T, method)(self(T, user), args) else @field(T, method)(self(T, user), args.*);
+            }
         }
     }.f;
 }
 
 fn self(comptime T: type, user: *anyopaque) *T {
     return @ptrCast(@alignCast(user));
+}
+
+/// Whether an app method returns `!void` rather than `void`.
+fn throws(comptime T: type, comptime method: []const u8) bool {
+    const Ret = @typeInfo(@TypeOf(@field(T, method))).@"fn".return_type.?;
+    const info = @typeInfo(Ret);
+    if (info != .error_union) return false;
+    if (info.error_union.payload != void) @compileError(
+        "app method '" ++ method ++ "' must return void or !void, not " ++ @typeName(Ret),
+    );
+    return true;
+}
+
+/// oF calls the app from the C++ main loop, so an error has nowhere to
+/// propagate to: dump the error return trace and panic at the throw site.
+fn panicError(comptime method: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) noreturn {
+    if (trace) |t| std.debug.dumpErrorReturnTrace(t);
+    std.debug.panicExtra(@returnAddress(), "app method '" ++ method ++ "' returned error.{s}", .{@errorName(err)});
 }
