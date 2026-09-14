@@ -164,8 +164,8 @@ pub fn getFrameNum() u64 {
 }
 /// Seconds the last frame took.
 pub const ofGetLastFrameTime_sig: Signature = .{ .name = "ofGetLastFrameTime", .ret = f64 };
-pub fn getLastFrameTime() f64 {
-    return cpp.bind(ofGetLastFrameTime_sig)();
+pub fn getLastFrameTime() f32 {
+    return @floatCast(cpp.bind(ofGetLastFrameTime_sig)());
 }
 pub const ofSetVerticalSync_sig: Signature = .{ .name = "ofSetVerticalSync", .args = &.{bool} };
 pub fn setVerticalSync(on: bool) void {
