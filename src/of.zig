@@ -20,6 +20,8 @@
 //! and signatures it must instantiate and layout-check against the installed
 //! oF headers. Nothing here declares how that build works.
 
+const std = @import("std");
+
 pub const app = @import("app.zig");
 pub const color = @import("color.zig");
 pub const events = @import("events.zig");
@@ -190,3 +192,8 @@ pub const dot = math.dot;
 pub const length = math.length;
 pub const normalize = math.normalize;
 pub const cross = math.cross;
+
+/// `std.meta.eql`: structural equality, for the types here that `==` will not
+/// compare. `==` on a `Vec2` is elementwise and yields a `@Vector(2, bool)`,
+/// and on a struct like `Color` or `Rectangle` it does not compile at all.
+pub const eql = std.meta.eql;
