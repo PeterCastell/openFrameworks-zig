@@ -116,7 +116,7 @@ new binding that needs an unsigned vector does not have to declare it.
 Every wrapper accepts and returns these types. The `glm::vec*` types are
 `of.GlmVec2`, `of.GlmVec3`, `of.GlmVec4` and the equivalent `I` and `U` names.
 They appear only where the ABI needs them: in a `Signature`, and as a field of
-another bound class such as `Rectangle.position`.
+another bound class such as `OfRectangle.position`.
 
 A `@Vector` cannot go in either place. Zig rejects a `@Vector` as a field of an
 `extern struct`, because a `@Vector` has no guaranteed in-memory representation.
@@ -212,6 +212,46 @@ These types bind the matrix functions of `ofGraphics.h`: `ofLoadMatrix`,
 `ofMultMatrix`, `ofLoadViewMatrix`, `ofMultViewMatrix`, `ofLoadIdentityMatrix`,
 `ofSetMatrixMode`, and the four `ofGetCurrent*Matrix` queries.
 
+## Rectangles
+
+`of.Rectangle` is a plain Zig struct of two `Vec2`s. Copy it, put it in an
+array, return it from a function. It is four floats.
+
+```zig
+const box: of.Rectangle = .{ .position = .{ 40, 80 }, .size = .{ 220, 120 } };
+if (box.inside(mouse)) box.draw();
+```
+
+Its methods are Zig, not calls into C++. They reproduce `ofRectangle`'s exact
+behaviour, including the parts that surprise you: `getArea` is
+`abs(width) * abs(height)`, so a negative side still gives a positive area, and
+`inside` uses strict comparisons against the standardized corners, so a point
+exactly on an edge is outside. A differential test checks all of this against
+the real `ofRectangle`: 196 comparisons over seven rectangles and thirteen
+points, including negative sides and exact corners, with no mismatch.
+
+oF gives `ofRectangle` a `glm::vec3` position, but the z is dead. The class has
+no `getZ` or `setZ`. `getCenter` returns z as `0.f`.
+`ofDrawRectangle(const ofRectangle&)` passes a hardcoded `0.0f`. Only one
+stream operator reads it, and its own writer does not write it. So
+`of.Rectangle` is 2D, and `draw` calls
+`ofDrawRectangle(const glm::vec2&, w, h)` directly.
+
+`of.OfRectangle` is the ABI type, the layout the C++ class has. It stays out of
+the public API for a reason: `ofRectangle` declares `float& x` and `float& y`
+bound to its own `position`, so an instance cannot be copied or moved after
+construction. A bound function that wants one gets a staged temporary:
+
+```zig
+var tmp: of.OfRectangle = undefined;
+const p = rect.stage(&tmp);
+defer tmp.deinit();
+cpp.bind(some_sig)(p);
+```
+
+The constructor binds the two references into `tmp` itself, and a local whose
+address you take does not move, so the temporary is valid for the call.
+
 ## Try it
 
 ```bash
@@ -283,8 +323,6 @@ that the bindings describe are also release layouts.
   the 2D drawing calls in `ofGraphics.h`, colors, `ofRectangle`, the math
   helpers, and `std::string`. To add any other oF function, write one
   `Signature`. The glue reports an error if that signature is incorrect.
-- **`of.Rectangle` is not movable.** `ofRectangle` keeps C++ references into its
-  own storage. Construct it in place with `init`. Do not copy it.
 
 ## Adding a binding
 

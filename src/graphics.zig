@@ -89,6 +89,14 @@ pub const ofDrawRectangle_sig: Signature = .{ .name = "ofDrawRectangle", .args =
 pub fn drawRectangle(x: f32, y: f32, w: f32, h: f32) void {
     cpp.bind(ofDrawRectangle_sig)(x, y, w, h);
 }
+/// `ofDrawRectangle(const glm::vec2&, w, h)`. This is what the `ofRectangle`
+/// overload calls into after hardcoding z to zero, so `Rectangle.draw` uses
+/// it and no `ofRectangle` has to be built.
+pub const ofDrawRectangle_vec2_sig: Signature = .{ .name = "ofDrawRectangle", .args = &.{ Ref(*const GlmVec2), f32, f32 } };
+pub fn drawRectangleAt(p: Vec2, w: f32, h: f32) void {
+    const g: GlmVec2 = .from(p);
+    cpp.bind(ofDrawRectangle_vec2_sig)(&g, w, h);
+}
 pub const ofDrawRectRounded_sig: Signature = .{ .name = "ofDrawRectRounded", .args = &.{ f32, f32, f32, f32, f32 } };
 pub fn drawRectRounded(x: f32, y: f32, w: f32, h: f32, radius: f32) void {
     cpp.bind(ofDrawRectRounded_sig)(x, y, w, h, radius);

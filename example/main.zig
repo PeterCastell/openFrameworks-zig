@@ -5,14 +5,13 @@ const of = @import("of");
 
 const App = struct {
     clicks: u32 = 0,
-    box: of.Rectangle = undefined,
+    box: of.Rectangle = .{ .position = .{ 40, 80 }, .size = .{ 220, 120 } },
 
     pub fn setup(self: *App) void {
         of.setWindowTitle("openFrameworks-zig");
         of.setFrameRate(60);
         of.setCircleResolution(64);
         of.background(of.Color.rgb(24, 24, 32));
-        self.box.init(40, 80, 220, 120);
         std.debug.print("setup: window {d}x{d}, box area {d:.0}\n", .{ of.getWidth(), of.getHeight(), self.box.getArea() });
     }
 
@@ -25,7 +24,7 @@ const App = struct {
         const mouse: of.Vec2 = .{ @floatFromInt(of.getMouseX()), @floatFromInt(of.getMouseY()) };
 
         // A box that changes shade while the mouse is over it.
-        of.setColor(if (self.box.inside(mouse[0], mouse[1])) of.Color.rgb(255, 180, 40) else of.Color.rgb(90, 90, 120));
+        of.setColor(if (self.box.inside(mouse)) of.Color.rgb(255, 180, 40) else of.Color.rgb(90, 90, 120));
         self.box.draw();
 
         // A circle that follows the mouse and pulses.
@@ -36,8 +35,7 @@ const App = struct {
         // A leader from the box to the circle's edge: subtract, normalize,
         // scale, and hand the result straight to the wrapper, which is the
         // only place a `glm::vec2` exists.
-        const centre = self.box.getCenter();
-        const from: of.Vec2 = .{ centre[0], centre[1] };
+        const from = self.box.getCenter();
         const gap = mouse - from;
         if (of.length(gap) > r) {
             of.setColor(of.Color.rgba(255, 255, 255, 90));
@@ -63,17 +61,13 @@ const App = struct {
         of.drawBitmapString("move the mouse, click the box, press f for fullscreen, esc to quit", 20, 50);
     }
 
-    pub fn exit(self: *App) void {
-        self.box.deinit();
-    }
-
     pub fn keyPressed(_: *App, k: of.KeyEventArgs) void {
         if (k.key == 'f') of.toggleFullscreen();
     }
 
     pub fn mousePressed(self: *App, m: of.MouseEventArgs) void {
         const p = m.pos();
-        if (self.box.inside(p[0], p[1])) self.clicks += 1;
+        if (self.box.inside(p)) self.clicks += 1;
     }
 
     pub fn windowResized(_: *App, size: of.ResizeEventArgs) void {
