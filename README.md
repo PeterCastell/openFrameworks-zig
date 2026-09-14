@@ -128,6 +128,29 @@ comes back, use `g.to()`. The conversion occurs in the wrapper body, and the
 optimizer removes it. Accessors return the Zig spelling: `rect.getPosition()`,
 `rect.getCenter()` and `mouse.pos()`.
 
+## Angles
+
+Every angle in this package is in radians. It takes radians, and it returns
+radians. No name carries a `Deg` or a `Rad` suffix.
+
+openFrameworks is degrees-first. It spells most rotations twice, as
+`ofRotateDeg` and `ofRotateRad`, or as `ofNode::panDeg` and `panRad`. Where a
+pair exists, this package binds the radian half and drops the suffix. A few oF
+calls have no radian half: `ofPath::arc`, `ofPolyline::arc`, `ofCamera::setFov`,
+`ofMesh::smoothNormals` and `ofNode::setOrientation(const glm::vec3&)`. For
+those, the wrapper converts, and the Zig signature still takes radians.
+
+The reason is `std.math`. The trigonometry of Zig is in radians. A sketch that
+works in degrees converts at every call. A sketch in radians never converts.
+Note also that glm is radians-only, so oF converts at its own boundary already.
+
+`of.degToRad` and `of.radToDeg` remain. Use them to read a degree literal out of
+a design or out of oF code you are porting. They are not part of any signature.
+
+One field is an exception. `TouchEventArgs.angle` comes from the touch API of
+the platform. oF declares it without a unit, and oF never reads it. This package
+passes it through as it arrives.
+
 ## Matrices and transforms
 
 `of.Mat3`, `of.Mat4` and `of.Quat` are `glm::mat3`, `glm::mat4` and `glm::quat`.
@@ -150,7 +173,7 @@ approximately sixteen vector instructions, which costs less than a call.
 
 ```zig
 var t: of.Transform = .{ .origin = .{ 100, 100, 0 }, .scale = @splat(2) };
-t.rotation[1] = of.getElapsedTimef() * 40; // yaw
+t.rotation[1] = of.getElapsedTimef() * 0.7; // yaw, radians a second
 of.pushMatrix();
 of.multMatrix(t.matrix());
 // ... draw in the transform's space ...
@@ -162,10 +185,10 @@ full `T * R * S` as a `Mat4`. `setBasis` and `setMatrix` decompose a matrix back
 into origin, rotation and scale.
 
 The decomposition is not always exact. A `Transform` cannot represent shear.
-Also, the code puts pitch into the range `[-90, 90]`. Thus a round trip keeps
-the rotation, but it can change the numbers.
+Also, the code puts pitch into the range `[-pi/2, pi/2]`. Thus a round trip
+keeps the rotation, but it can change the numbers.
 
-Rotation is in degrees, as yaw, pitch and roll:
+Rotation is in radians, as yaw, pitch and roll:
 
 | component | name | axis | axis direction |
 |---|---|---|---|
@@ -195,8 +218,10 @@ These types bind the matrix functions of `ofGraphics.h`: `ofLoadMatrix`,
 zig build run -Dof-root=C:/path/to/of_v0.12.1_vs_64_release
 ```
 
-`zig build glue -Dof-root=...` writes the generated C++ glue to
-`zig-out/glue/of_glue.cpp`. Read that file to examine the glue.
+`zig build glue` writes the generated C++ glue to `zig-out/glue/of_glue.cpp`.
+Read that file to examine the glue. It is the same file the build compiles
+into the library, not a second copy of it, and generating it needs no oF
+headers -- so this step works without `-Dof-root`.
 
 ## How it works
 
@@ -211,7 +236,6 @@ the methods of those types, and its free functions:
 | `matrix.zig` | `glm::mat3`, `glm::mat4`, `glm::quat`, and the `Transform` that composes them. |
 | `events.zig` | The event-argument types and the key, modifier and mouse-button constants. |
 | `of.zig` | Re-exports everything flat, and is the root the glue scan starts from. |
-| `glue_manifest.zig` | Build-side only: what the `glue` step sends to the generator of cpp-bindgen. |
 
 A bound function is a public `Signature` constant. The constant has the name of
 the C++ function, and it sits next to the Zig wrapper that binds it:

@@ -48,7 +48,7 @@ const App = struct {
         // A spinning line around the circle.
         of.pushMatrix();
         of.translate(mouse[0], mouse[1], 0);
-        of.rotateDeg(t * 90);
+        of.rotate(t * (std.math.pi / 2.0)); // a quarter turn a second
         of.setColor(of.Color.grey(255));
         of.setLineWidth(2);
         of.drawLine(-60, 0, 60, 0);

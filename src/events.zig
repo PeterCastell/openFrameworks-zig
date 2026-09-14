@@ -90,6 +90,10 @@ pub const TouchEventArgs = extern struct {
     numTouches: i32,
     width: f32,
     height: f32,
+    /// Reported by the platform's touch API and passed through unconverted.
+    /// oF declares it without a unit and never reads it, so unlike every
+    /// other angle here it is not guaranteed to be radians -- check against
+    /// the platform you are targeting before you trust it.
     angle: f32,
     minoraxis: f32,
     majoraxis: f32,

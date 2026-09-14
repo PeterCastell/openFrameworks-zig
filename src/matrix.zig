@@ -12,7 +12,7 @@
 //! `@Vector` columns rather than bound from glm — a 4x4 product is about
 //! sixteen vector instructions, which is cheaper than the call would be.
 //!
-//! Euler angles are **degrees**, as yaw/pitch/roll:
+//! Euler angles are **radians**, as yaw/pitch/roll:
 //!
 //! | component | name | axis | |
 //! |---|---|---|---|
@@ -25,10 +25,11 @@
 //! the one Unity and Godot take.
 //!
 //! It is *not* the one `glm::quat(vec3)` builds, which is `Rz * Ry * Rx`,
-//! and so not the one `ofNode::setOrientation(const glm::vec3&)` takes. A
-//! quaternion carries no convention, so `Quat` is the currency to interop
-//! through: bind `ofNode`'s `const glm::quat&` overload rather than its
-//! euler one and the question does not arise.
+//! and so not the one `ofNode::setOrientation(const glm::vec3&)` takes --
+//! which is degrees on top of that. A quaternion carries neither a unit nor
+//! a composition order, so `Quat` is the currency to interop through: bind
+//! `ofNode`'s `const glm::quat&` overload rather than its euler one and
+//! both questions go away.
 const std = @import("std");
 const cpp = @import("cpp_bindgen");
 const math = @import("math.zig");
@@ -38,9 +39,6 @@ const Vec4 = math.Vec4;
 const GlmVec3 = math.GlmVec3;
 const GlmVec4 = math.GlmVec4;
 const GlmQualifier = math.GlmQualifier;
-
-const deg_to_rad: f32 = std.math.pi / 180.0;
-const rad_to_deg: f32 = 180.0 / std.math.pi;
 
 fn glmMat(comptime c: comptime_int, comptime r: comptime_int, comptime E: type) cpp.Template {
     return .{ .name = "glm::mat", .args = &.{
@@ -119,10 +117,9 @@ pub const Mat3 = extern struct {
         return fromCols(.{ x[0], y[0], z[0] }, .{ x[1], y[1], z[1] }, .{ x[2], y[2], z[2] });
     }
 
-    /// Yaw/pitch/roll in degrees — `.{ pitch, yaw, roll }` about X, Y, Z —
+    /// Yaw/pitch/roll in radians — `.{ pitch, yaw, roll }` about X, Y, Z —
     /// composed `Ry(yaw) * Rx(pitch) * Rz(roll)`.
-    pub fn fromEuler(degrees: Vec3) Mat3 {
-        const r = degrees * @as(Vec3, @splat(deg_to_rad));
+    pub fn fromEuler(r: Vec3) Mat3 {
         const c: Vec3 = .{ @cos(r[0]), @cos(r[1]), @cos(r[2]) };
         const s: Vec3 = .{ @sin(r[0]), @sin(r[1]), @sin(r[2]) };
         return fromCols(
@@ -133,9 +130,9 @@ pub const Mat3 = extern struct {
     }
 
     /// The inverse of `fromEuler`, for a matrix that is a pure rotation.
-    /// Straight up or down (`|pitch| = 90`) yaw and roll turn about the same
-    /// axis and are not separable, so roll comes back zero and yaw carries
-    /// the whole rotation.
+    /// Straight up or down (`|pitch| = pi/2`) yaw and roll turn about the
+    /// same axis and are not separable, so roll comes back zero and yaw
+    /// carries the whole rotation.
     pub fn toEuler(m: Mat3) Vec3 {
         const sx = -m.value[2].y;
         const x = std.math.asin(std.math.clamp(sx, -1.0, 1.0));
@@ -145,10 +142,10 @@ pub const Mat3 = extern struct {
                 x,
                 std.math.atan2(m.value[2].x, m.value[2].z),
                 std.math.atan2(m.value[0].y, m.value[1].y),
-            } * @as(Vec3, @splat(rad_to_deg));
+            };
         }
         const signed = if (sx > 0) m.value[1].x else -m.value[1].x;
-        return Vec3{ x, std.math.atan2(signed, m.value[0].x), 0 } * @as(Vec3, @splat(rad_to_deg));
+        return Vec3{ x, std.math.atan2(signed, m.value[0].x), 0 };
     }
 };
 
@@ -265,11 +262,11 @@ pub const Quat = extern struct {
 
     pub const identity: Quat = .{ .x = 0, .y = 0, .z = 0, .w = 1 };
 
-    /// Yaw/pitch/roll in degrees, the same convention as `Mat3.fromEuler`:
+    /// Yaw/pitch/roll in radians, the same convention as `Mat3.fromEuler`:
     /// `qy * qx * qz`. Note this is *not* what `glm::quat(vec3)` builds —
     /// see the module comment.
-    pub fn fromEuler(degrees: Vec3) Quat {
-        const h = degrees * @as(Vec3, @splat(deg_to_rad * 0.5));
+    pub fn fromEuler(radians: Vec3) Quat {
+        const h = radians * @as(Vec3, @splat(0.5));
         const c: Vec3 = .{ @cos(h[0]), @cos(h[1]), @cos(h[2]) };
         const s: Vec3 = .{ @sin(h[0]), @sin(h[1]), @sin(h[2]) };
         return .{
@@ -284,8 +281,9 @@ pub const Quat = extern struct {
         return q.toMat3().toEuler();
     }
 
-    pub fn fromAxisAngle(axis: Vec3, degrees: f32) Quat {
-        const h = degrees * deg_to_rad * 0.5;
+    /// `axis` need not be normalized; `radians` turns about it right-handed.
+    pub fn fromAxisAngle(axis: Vec3, radians: f32) Quat {
+        const h = radians * 0.5;
         const a = math.normalize(axis) * @as(Vec3, @splat(@sin(h)));
         return .{ .x = a[0], .y = a[1], .z = a[2], .w = @cos(h) };
     }
@@ -351,34 +349,31 @@ pub const Quat = extern struct {
     }
 };
 
-/// A position, an xyz euler rotation in degrees, and a per-axis scale, kept
+/// A position, an xyz euler rotation in radians, and a per-axis scale, kept
 /// as the three things a sketch actually edits rather than as the matrix
 /// they multiply out to. It is a plain Zig struct, not a C++ class, so its
 /// fields are `@Vector`s you can do arithmetic on directly.
 ///
 /// `basis` and `matrix` compose the three; `setBasis` and `setMatrix` take
 /// them apart again. A decomposition is not always exact: shear cannot be
-/// represented at all, and at `rotation[1] = +-90` the x and z angles trade
+/// represented at all, and at `rotation[0] = +-pi/2` the y and z angles trade
 /// off against each other, so a round trip preserves the *matrix* but need
 /// not preserve the *numbers*.
 pub const Transform = struct {
     origin: Vec3 = @splat(0),
-    /// Degrees: `.{ pitch, yaw, roll }` about X, Y and Z, composed
+    /// Radians: `.{ pitch, yaw, roll }` about X, Y and Z, composed
     /// `Ry(yaw) * Rx(pitch) * Rz(roll)`.
     rotation: Vec3 = @splat(0),
     scale: Vec3 = @splat(1),
 
     pub const identity: Transform = .{};
 
-    /// Nose up or down, about X.
     pub fn pitch(t: Transform) f32 {
         return t.rotation[0];
     }
-    /// Turn left or right, about Y.
     pub fn yaw(t: Transform) f32 {
         return t.rotation[1];
     }
-    /// Bank, about Z.
     pub fn roll(t: Transform) f32 {
         return t.rotation[2];
     }

@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     const dep = b.dependency("cpp_bindgen", .{ .target = target, .optimize = optimize });
 
     // The Zig side. `src/of.zig` is also the root of the glue scan; what the
-    // glue needs beyond the bindings themselves is in `addCppGlue` below.
+    // glue needs beyond the bindings themselves is in `generateCppGlue` below.
     const of_mod = b.addModule("of", .{
         .root_source_file = b.path("src/of.zig"),
         .target = target,
@@ -53,10 +53,22 @@ pub fn build(b: *std.Build) void {
 
     const lib = b.addLibrary(.{ .name = "openFrameworks", .root_module = lib_mod, .linkage = .static });
 
+    // Generated here rather than inside `configureOf` so that one generator
+    // run feeds both the `glue` step and the compile below: the file installed
+    // for inspection is then the file that was compiled, not a second copy of
+    // it. Generating needs no oF headers -- only compiling does -- so the
+    // `glue` step still works without `-Dof-root`.
+    const glue = cpp_bindgen.generateCppGlue(b, dep, .{
+        .binding_module = bindingsModule(b, dep, target),
+        .headers = glue_headers,
+        .target = target,
+        .name = "of-glue",
+    });
+
     if (of_root.len == 0) {
         lib.step.dependOn(&b.addFail("openframeworks_zig: pass -Dof-root=<path to of_v0.12.x_vs_64_release> or set OF_ROOT").step);
     } else {
-        configureOf(b, dep, of_mod, lib_mod, target, of_root, winrt_include);
+        configureOf(b, of_mod, lib_mod, target, of_root, winrt_include, glue);
     }
     b.installArtifact(lib);
     of_mod.linkLibrary(lib);
@@ -78,19 +90,19 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run the example app").dependOn(&run_example.step);
 
     const glue_step = b.step("glue", "Write the generated C++ glue to zig-out/glue for inspection");
-    glue_step.dependOn(&b.addInstallFile(emitGlueFile(b, dep, target), "glue/of_glue.cpp").step);
+    glue_step.dependOn(&b.addInstallFile(glue, "glue/of_glue.cpp").step);
 }
 
 /// The compile and link lines of oF's own `openframeworksLib.vcxproj` and
 /// `openFrameworksRelease.props`, reproduced for the zig toolchain.
 fn configureOf(
     b: *std.Build,
-    dep: *std.Build.Dependency,
     of_mod: *std.Build.Module,
     lib_mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     of_root: []const u8,
     winrt_include: ?[]const u8,
+    glue: std.Build.LazyPath,
 ) void {
     if (target.result.abi != .msvc) {
         lib_mod.owner.getInstallStep().dependOn(&b.addFail("openframeworks_zig: only the x86_64-windows-msvc target is supported (it links oF's Visual Studio prebuilt libraries)").step);
@@ -132,20 +144,14 @@ fn configureOf(
     // The trampoline that turns ofBaseApp's virtual calls into C callbacks.
     lib_mod.addCSourceFile(.{ .file = b.path("src/cpp/ofzig_app.cpp"), .flags = cxx_flags });
 
-    // The glue cpp-bindgen generates from the bindings: it instantiates every
+    // The glue cpp-bindgen generated from the bindings: it instantiates every
     // header-only entity the bindings name and static_asserts every layout
-    // fact they claim, against the real headers. It compiles into `lib_mod`,
-    // so it inherits the include paths added above, and it takes the same
-    // defines as the rest of the oF build: the facts it checks are only the
-    // facts that will be linked if it sees the same declarations.
-    cpp_bindgen.addCppGlue(b, dep, .{
-        .attach_to = lib_mod,
-        .binding_module = bindingsModule(b, dep, target),
-        .headers = glue_headers,
-        .flags = cxx_flags,
-        .target = target,
-        .name = "of-glue",
-    });
+    // fact they claim, against the real headers. Compiling it here gives it
+    // the include paths added above and the same flags as the rest of the oF
+    // build: the facts it checks are only the facts that will be linked if it
+    // sees the same declarations. The glue needs no flags of its own -- it
+    // carries what it needs in its own source.
+    lib_mod.addCSourceFile(.{ .file = glue, .flags = cxx_flags });
 
     // Link inputs go on the `of` module, not on the static library's own
     // module: a static library's library paths do not reach the executable
@@ -313,23 +319,6 @@ fn bindingsModule(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.R
     const bindings = b.createModule(.{ .root_source_file = b.path("src/of.zig"), .target = target });
     bindings.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
     return bindings;
-}
-
-/// The glue as a file, for the `glue` step to install. `addCppGlue` compiles
-/// it straight into a module and returns nothing, so inspecting the generated
-/// C++ means running cpp-bindgen's generator here. It wants a `manifest`
-/// module, which `src/glue_manifest.zig` is.
-fn emitGlueFile(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.ResolvedTarget) std.Build.LazyPath {
-    const manifest = b.createModule(.{ .root_source_file = b.path("src/glue_manifest.zig"), .target = target });
-    manifest.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
-    manifest.addImport("bindings", bindingsModule(b, dep, target));
-
-    const gen = b.createModule(.{ .root_source_file = dep.path("tools/emit.zig"), .target = target });
-    gen.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
-    gen.addImport("manifest", manifest);
-
-    const run = b.addRunArtifact(b.addExecutable(.{ .name = "of-glue-inspect", .root_module = gen }));
-    return run.addOutputFileArg("of_glue.cpp");
 }
 
 /// `<Windows Kits>/10/Include/<version>/winrt`, which oF's Media Foundation

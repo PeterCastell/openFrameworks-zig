@@ -148,15 +148,17 @@ pub const ofTranslate_sig: Signature = .{ .name = "ofTranslate", .args = &.{ f32
 pub fn translate(x: f32, y: f32, z: f32) void {
     cpp.bind(ofTranslate_sig)(x, y, z);
 }
-/// `ofRotateDeg(degrees)`: about the z axis.
-pub const ofRotateDeg_sig: Signature = .{ .name = "ofRotateDeg", .args = &.{f32} };
-pub fn rotateDeg(degrees: f32) void {
-    cpp.bind(ofRotateDeg_sig)(degrees);
+/// `ofRotateRad(radians)`: about the z axis. oF spells this rotation twice,
+/// as `ofRotateDeg` and `ofRotateRad`; this package binds the radian half of
+/// every such pair and drops the suffix, so a Zig angle is always radians.
+pub const ofRotateRad_sig: Signature = .{ .name = "ofRotateRad", .args = &.{f32} };
+pub fn rotate(radians: f32) void {
+    cpp.bind(ofRotateRad_sig)(radians);
 }
-/// `ofRotateDeg(degrees, x, y, z)`: about the given axis.
-pub const ofRotateDeg_axis_sig: Signature = .{ .name = "ofRotateDeg", .args = &.{ f32, f32, f32, f32 } };
-pub fn rotateDegAxis(degrees: f32, x: f32, y: f32, z: f32) void {
-    cpp.bind(ofRotateDeg_axis_sig)(degrees, x, y, z);
+/// `ofRotateRad(radians, x, y, z)`: about the given axis.
+pub const ofRotateRad_axis_sig: Signature = .{ .name = "ofRotateRad", .args = &.{ f32, f32, f32, f32 } };
+pub fn rotateAxis(radians: f32, x: f32, y: f32, z: f32) void {
+    cpp.bind(ofRotateRad_axis_sig)(radians, x, y, z);
 }
 pub const ofScale_sig: Signature = .{ .name = "ofScale", .args = &.{ f32, f32, f32 } };
 pub fn scale(x: f32, y: f32, z: f32) void {

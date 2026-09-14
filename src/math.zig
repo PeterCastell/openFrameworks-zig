@@ -235,6 +235,12 @@ pub fn signedNoise(x: f32, y: f32) f32 {
     return cpp.bind(ofSignedNoise_sig)(x, y);
 }
 
+// Unit conversion. Every angle this package takes or returns is radians, so
+// neither of these appears in a signature -- they are here to read a degree
+// literal out of a design, a data file, or oF code you are porting, and to
+// print one back out. `std.math.degreesToRadians` and `radiansToDegrees` do
+// the same arithmetic without the call.
+
 /// `ofDegToRad`
 pub const ofDegToRad_sig: Signature = .{ .name = "ofDegToRad", .args = &.{f32}, .ret = f32 };
 pub fn degToRad(degrees: f32) f32 {

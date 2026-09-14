@@ -5,6 +5,16 @@
 //! symbol through cpp-bindgen: a function is `cpp.bind(signature)(args...)`,
 //! with the signature written at the one place it is used.
 //!
+//! **Every angle is in radians**, taken and returned, with no `Deg`/`Rad`
+//! suffix anywhere. oF itself is degrees-first -- it spells most rotations
+//! twice (`ofRotateDeg` and `ofRotateRad`, `ofNode::panDeg` and `panRad`)
+//! and a few only in degrees (`ofPath::arc`, `ofCamera::setFov`,
+//! `ofMesh::smoothNormals`, `ofNode::setOrientation(const glm::vec3&)`).
+//! Where a pair exists this package binds the radian half; where oF offers
+//! only degrees the wrapper converts at the call. Zig's own `std.math` trig
+//! is radians, so this keeps a sketch in one unit throughout; `degToRad` and
+//! `radToDeg` are there for porting a degree literal out of oF code.
+//!
 //! This file is also the root of the glue scan: `build.zig` hands it to
 //! cpp-bindgen, which walks the namespaces re-exported below for the types
 //! and signatures it must instantiate and layout-check against the installed
@@ -123,8 +133,8 @@ pub const drawBitmapString = graphics.drawBitmapString;
 pub const pushMatrix = graphics.pushMatrix;
 pub const popMatrix = graphics.popMatrix;
 pub const translate = graphics.translate;
-pub const rotateDeg = graphics.rotateDeg;
-pub const rotateDegAxis = graphics.rotateDegAxis;
+pub const rotate = graphics.rotate;
+pub const rotateAxis = graphics.rotateAxis;
 pub const scale = graphics.scale;
 pub const loadIdentityMatrix = graphics.loadIdentityMatrix;
 pub const setMatrixMode = graphics.setMatrixMode;
