@@ -73,8 +73,8 @@ pub const MouseEventArgs = extern struct {
 
 /// `ofResizeEventArgs`
 pub const ResizeEventArgs = extern struct {
-    width: i32,
-    height: i32,
+    width: u32,
+    height: u32,
     pub const cpp_name = "ofResizeEventArgs";
     pub const cpp_kind: cpp.Kind = .class;
     pub const cpp_abi: cpp.ClassAbi = .trivial_copy;

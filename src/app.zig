@@ -45,8 +45,8 @@ pub const BaseApp = opaque {
 };
 
 pub const RunOptions = struct {
-    width: i32 = 1024,
-    height: i32 = 768,
+    width: u32 = 1024,
+    height: u32 = 768,
     mode: WindowMode = .window,
 };
 
@@ -59,7 +59,7 @@ pub const ofSetupOpenGL_sig: Signature = .{ .name = "ofSetupOpenGL", .args = &.{
 pub fn run(comptime T: type, app: *T, opts: RunOptions) i32 {
     std.debug.assert(ofzig_callbacks_size() == @sizeOf(Callbacks));
     const cbs = comptime callbacksFor(T);
-    cpp.bind(ofSetupOpenGL_sig)(opts.width, opts.height, opts.mode);
+    cpp.bind(ofSetupOpenGL_sig)(@bitCast(opts.width), @bitCast(opts.height), opts.mode);
     const base = ofzig_app_new(&cbs, @ptrCast(app));
     return cpp.bind(.{ .name = "ofRunApp", .args = &.{*BaseApp}, .ret = i32 })(base);
 }
@@ -73,28 +73,28 @@ pub fn exit() void {
 // window
 
 pub const ofGetWidth_sig: Signature = .{ .name = "ofGetWidth", .ret = i32 };
-pub fn getWidth() i32 {
-    return cpp.bind(ofGetWidth_sig)();
+pub fn getWidth() u32 {
+    return @bitCast(cpp.bind(ofGetWidth_sig)());
 }
 pub const ofGetHeight_sig: Signature = .{ .name = "ofGetHeight", .ret = i32 };
-pub fn getHeight() i32 {
-    return cpp.bind(ofGetHeight_sig)();
+pub fn getHeight() u32 {
+    return @bitCast(cpp.bind(ofGetHeight_sig)());
 }
 pub const ofGetWindowWidth_sig: Signature = .{ .name = "ofGetWindowWidth", .ret = i32 };
-pub fn getWindowWidth() i32 {
-    return cpp.bind(ofGetWindowWidth_sig)();
+pub fn getWindowWidth() u32 {
+    return @bitCast(cpp.bind(ofGetWindowWidth_sig)());
 }
 pub const ofGetWindowHeight_sig: Signature = .{ .name = "ofGetWindowHeight", .ret = i32 };
-pub fn getWindowHeight() i32 {
-    return cpp.bind(ofGetWindowHeight_sig)();
+pub fn getWindowHeight() u32 {
+    return @bitCast(cpp.bind(ofGetWindowHeight_sig)());
 }
 pub const ofGetScreenWidth_sig: Signature = .{ .name = "ofGetScreenWidth", .ret = i32 };
-pub fn getScreenWidth() i32 {
-    return cpp.bind(ofGetScreenWidth_sig)();
+pub fn getScreenWidth() u32 {
+    return @bitCast(cpp.bind(ofGetScreenWidth_sig)());
 }
 pub const ofGetScreenHeight_sig: Signature = .{ .name = "ofGetScreenHeight", .ret = i32 };
-pub fn getScreenHeight() i32 {
-    return cpp.bind(ofGetScreenHeight_sig)();
+pub fn getScreenHeight() u32 {
+    return @bitCast(cpp.bind(ofGetScreenHeight_sig)());
 }
 pub const ofGetWindowPositionX_sig: Signature = .{ .name = "ofGetWindowPositionX", .ret = i32 };
 pub fn getWindowPositionX() i32 {
@@ -105,8 +105,8 @@ pub fn getWindowPositionY() i32 {
     return cpp.bind(ofGetWindowPositionY_sig)();
 }
 pub const ofSetWindowShape_sig: Signature = .{ .name = "ofSetWindowShape", .args = &.{ i32, i32 } };
-pub fn setWindowShape(w: i32, h: i32) void {
-    cpp.bind(ofSetWindowShape_sig)(w, h);
+pub fn setWindowShape(w: u32, h: u32) void {
+    cpp.bind(ofSetWindowShape_sig)(@bitCast(w), @bitCast(h));
 }
 pub const ofSetWindowPosition_sig: Signature = .{ .name = "ofSetWindowPosition", .args = &.{ i32, i32 } };
 pub fn setWindowPosition(x: i32, y: i32) void {
@@ -147,8 +147,8 @@ pub fn setEscapeQuitsApp(on: bool) void {
 // frames and time
 
 pub const ofSetFrameRate_sig: Signature = .{ .name = "ofSetFrameRate", .args = &.{i32} };
-pub fn setFrameRate(fps: i32) void {
-    cpp.bind(ofSetFrameRate_sig)(fps);
+pub fn setFrameRate(fps: u32) void {
+    cpp.bind(ofSetFrameRate_sig)(@bitCast(fps));
 }
 pub const ofGetFrameRate_sig: Signature = .{ .name = "ofGetFrameRate", .ret = f32 };
 pub fn getFrameRate() f32 {
@@ -181,8 +181,8 @@ pub fn getElapsedTimeMillis() u64 {
     return cpp.bind(ofGetElapsedTimeMillis_sig)();
 }
 pub const ofSleepMillis_sig: Signature = .{ .name = "ofSleepMillis", .args = &.{i32} };
-pub fn sleepMillis(ms: i32) void {
-    cpp.bind(ofSleepMillis_sig)(ms);
+pub fn sleepMillis(ms: u32) void {
+    cpp.bind(ofSleepMillis_sig)(@bitCast(ms));
 }
 
 // input

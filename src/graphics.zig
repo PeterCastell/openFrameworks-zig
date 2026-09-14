@@ -27,8 +27,8 @@ pub fn background(c: Color) void {
 }
 /// `ofBackground(grey, 255)`
 pub const ofBackground_grey_sig: Signature = .{ .name = "ofBackground", .args = &.{ i32, i32 } };
-pub fn backgroundGrey(v: i32) void {
-    cpp.bind(ofBackground_grey_sig)(v, 255);
+pub fn backgroundGrey(v: u32) void {
+    cpp.bind(ofBackground_grey_sig)(@bitCast(v), 255);
 }
 pub const ofSetBackgroundAuto_sig: Signature = .{ .name = "ofSetBackgroundAuto", .args = &.{bool} };
 pub fn setBackgroundAuto(on: bool) void {
@@ -46,8 +46,8 @@ pub fn setColor(c: Color) void {
 }
 /// `ofSetColor(color, alpha)`
 pub const ofSetColor_alpha_sig: Signature = .{ .name = "ofSetColor", .args = &.{ Ref(*const Color), i32 } };
-pub fn setColorAlpha(c: Color, alpha: i32) void {
-    cpp.bind(ofSetColor_alpha_sig)(&c, alpha);
+pub fn setColorAlpha(c: Color, alpha: u32) void {
+    cpp.bind(ofSetColor_alpha_sig)(&c, @bitCast(alpha));
 }
 /// `ofSetColor(floatColor)`
 pub const ofSetColor_float_sig: Signature = .{ .name = "ofSetColor", .args = &.{Ref(*const FloatColor)} };
@@ -56,8 +56,8 @@ pub fn setFloatColor(c: FloatColor) void {
 }
 /// `ofSetColor(grey)`
 pub const ofSetColor_grey_sig: Signature = .{ .name = "ofSetColor", .args = &.{i32} };
-pub fn setColorGrey(v: i32) void {
-    cpp.bind(ofSetColor_grey_sig)(v);
+pub fn setColorGrey(v: u32) void {
+    cpp.bind(ofSetColor_grey_sig)(@bitCast(v));
 }
 
 // fill / stroke state
@@ -75,8 +75,8 @@ pub fn setLineWidth(w: f32) void {
     cpp.bind(ofSetLineWidth_sig)(w);
 }
 pub const ofSetCircleResolution_sig: Signature = .{ .name = "ofSetCircleResolution", .args = &.{i32} };
-pub fn setCircleResolution(n: i32) void {
-    cpp.bind(ofSetCircleResolution_sig)(n);
+pub fn setCircleResolution(n: u32) void {
+    cpp.bind(ofSetCircleResolution_sig)(@bitCast(n));
 }
 pub const ofSetRectMode_sig: Signature = .{ .name = "ofSetRectMode", .args = &.{RectMode} };
 pub fn setRectMode(mode: RectMode) void {
