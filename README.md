@@ -173,7 +173,7 @@ approximately sixteen vector instructions, which costs less than a call.
 
 ```zig
 var t: of.Transform = .{ .origin = .{ 100, 100, 0 }, .scale = @splat(2) };
-t.rotation[1] = of.getElapsedTimef() * 0.7; // yaw, radians a second
+t.rotation[1] = of.getElapsedTime() * 0.7; // yaw, radians a second
 of.pushMatrix();
 of.multMatrix(t.matrix());
 // ... draw in the transform's space ...

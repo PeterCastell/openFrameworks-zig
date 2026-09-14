@@ -172,9 +172,9 @@ pub fn setVerticalSync(on: bool) void {
     cpp.bind(ofSetVerticalSync_sig)(on);
 }
 /// Seconds since the app started.
-pub const ofGetElapsedTimef_sig: Signature = .{ .name = "ofGetElapsedTimef", .ret = f32 };
-pub fn getElapsedTimef() f32 {
-    return cpp.bind(ofGetElapsedTimef_sig)();
+pub const ofGetElapsedTime_sig: Signature = .{ .name = "ofGetElapsedTimef", .ret = f32 };
+pub fn getElapsedTime() f32 {
+    return cpp.bind(ofGetElapsedTime_sig)();
 }
 pub const ofGetElapsedTimeMillis_sig: Signature = .{ .name = "ofGetElapsedTimeMillis", .ret = u64 };
 pub fn getElapsedTimeMillis() u64 {

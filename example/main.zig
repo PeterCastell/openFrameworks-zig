@@ -18,7 +18,7 @@ const App = struct {
     pub fn update(_: *App) void {}
 
     pub fn draw(self: *App) void {
-        const t = of.getElapsedTimef();
+        const t = of.getElapsedTime();
 
         // `Vec2` is `@Vector(2, f32)`, so the arithmetic below is Zig's own.
         const mouse: of.Vec2 = .{ @floatFromInt(of.getMouseX()), @floatFromInt(of.getMouseY()) };
