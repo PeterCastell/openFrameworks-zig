@@ -1,4 +1,8 @@
 //! ofGraphics.h: the immediate-mode 2D drawing calls.
+//!
+//! Every call taking coordinates also has an `i` variant taking integer
+//! pixels, where positions are `i32` and extents `u32` to match `getMouseX`
+//! and `getWidth`, so the screen queries compose without a cast.
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
@@ -6,6 +10,7 @@ const Color = @import("color.zig").Color;
 const FloatColor = @import("color.zig").FloatColor;
 const math = @import("math.zig");
 const Vec2 = math.Vec2;
+const Vec2I = math.Vec2I;
 const GlmVec2 = math.GlmVec2;
 const String = @import("string.zig").String;
 const Mat4 = @import("matrix.zig").Mat4;
@@ -89,6 +94,9 @@ pub const ofDrawRectangle_sig: Signature = .{ .name = "ofDrawRectangle", .args =
 pub fn drawRectangle(x: f32, y: f32, w: f32, h: f32) void {
     cpp.bind(ofDrawRectangle_sig)(x, y, w, h);
 }
+pub fn drawRectanglei(x: i32, y: i32, w: u32, h: u32) void {
+    drawRectangle(@floatFromInt(x), @floatFromInt(y), @floatFromInt(w), @floatFromInt(h));
+}
 /// `ofDrawRectangle(const glm::vec2&, w, h)`. This is what the `ofRectangle`
 /// overload calls into after hardcoding z to zero, so `Rectangle.draw` uses
 /// it and no `ofRectangle` has to be built.
@@ -97,26 +105,44 @@ pub fn drawRectangleAt(p: Vec2, w: f32, h: f32) void {
     const g: GlmVec2 = .from(p);
     cpp.bind(ofDrawRectangle_vec2_sig)(&g, w, h);
 }
+pub fn drawRectangleAti(p: Vec2I, w: u32, h: u32) void {
+    drawRectangleAt(@floatFromInt(p), @floatFromInt(w), @floatFromInt(h));
+}
 pub const ofDrawRectRounded_sig: Signature = .{ .name = "ofDrawRectRounded", .args = &.{ f32, f32, f32, f32, f32 } };
 pub fn drawRectRounded(x: f32, y: f32, w: f32, h: f32, radius: f32) void {
     cpp.bind(ofDrawRectRounded_sig)(x, y, w, h, radius);
 }
+pub fn drawRectRoundedi(x: i32, y: i32, w: u32, h: u32, radius: u32) void {
+    drawRectRounded(@floatFromInt(x), @floatFromInt(y), @floatFromInt(w), @floatFromInt(h), @floatFromInt(radius));
+}
 pub const ofDrawCircle_sig: Signature = .{ .name = "ofDrawCircle", .args = &.{ f32, f32, f32 } };
 pub fn drawCircle(x: f32, y: f32, radius: f32) void {
     cpp.bind(ofDrawCircle_sig)(x, y, radius);
+}
+pub fn drawCirclei(x: i32, y: i32, radius: u32) void {
+    drawCircle(@floatFromInt(x), @floatFromInt(y), @floatFromInt(radius));
 }
 pub const ofDrawCircle_vec2_sig: Signature = .{ .name = "ofDrawCircle", .args = &.{ Ref(*const GlmVec2), f32 } };
 pub fn drawCircleAt(center: Vec2, radius: f32) void {
     const c: GlmVec2 = .from(center);
     cpp.bind(ofDrawCircle_vec2_sig)(&c, radius);
 }
+pub fn drawCircleAti(center: Vec2I, radius: u32) void {
+    drawCircleAt(@floatFromInt(center), @floatFromInt(radius));
+}
 pub const ofDrawEllipse_sig: Signature = .{ .name = "ofDrawEllipse", .args = &.{ f32, f32, f32, f32 } };
 pub fn drawEllipse(x: f32, y: f32, w: f32, h: f32) void {
     cpp.bind(ofDrawEllipse_sig)(x, y, w, h);
 }
+pub fn drawEllipsei(x: i32, y: i32, w: u32, h: u32) void {
+    drawEllipse(@floatFromInt(x), @floatFromInt(y), @floatFromInt(w), @floatFromInt(h));
+}
 pub const ofDrawLine_sig: Signature = .{ .name = "ofDrawLine", .args = &.{ f32, f32, f32, f32 } };
 pub fn drawLine(x1: f32, y1: f32, x2: f32, y2: f32) void {
     cpp.bind(ofDrawLine_sig)(x1, y1, x2, y2);
+}
+pub fn drawLinei(x1: i32, y1: i32, x2: i32, y2: i32) void {
+    drawLine(@floatFromInt(x1), @floatFromInt(y1), @floatFromInt(x2), @floatFromInt(y2));
 }
 pub const ofDrawLine_vec2_sig: Signature = .{ .name = "ofDrawLine", .args = &.{ Ref(*const GlmVec2), Ref(*const GlmVec2) } };
 pub fn drawLineBetween(a: Vec2, b: Vec2) void {
@@ -124,9 +150,15 @@ pub fn drawLineBetween(a: Vec2, b: Vec2) void {
     const gb: GlmVec2 = .from(b);
     cpp.bind(ofDrawLine_vec2_sig)(&ga, &gb);
 }
+pub fn drawLineBetweeni(a: Vec2I, b: Vec2I) void {
+    drawLineBetween(@floatFromInt(a), @floatFromInt(b));
+}
 pub const ofDrawTriangle_sig: Signature = .{ .name = "ofDrawTriangle", .args = &.{ f32, f32, f32, f32, f32, f32 } };
 pub fn drawTriangle(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32) void {
     cpp.bind(ofDrawTriangle_sig)(x1, y1, x2, y2, x3, y3);
+}
+pub fn drawTrianglei(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void {
+    drawTriangle(@floatFromInt(x1), @floatFromInt(y1), @floatFromInt(x2), @floatFromInt(y2), @floatFromInt(x3), @floatFromInt(y3));
 }
 
 /// `template<> void ofDrawBitmapString(const std::string&, float x, float y, float z)`,
@@ -140,6 +172,9 @@ pub fn drawBitmapString(text: []const u8, x: f32, y: f32) void {
     var s = String.init(text);
     defer s.deinit();
     cpp.bind(ofDrawBitmapString_sig)(&s, x, y, 0);
+}
+pub fn drawBitmapStringi(text: []const u8, x: i32, y: i32) void {
+    drawBitmapString(text, @floatFromInt(x), @floatFromInt(y));
 }
 
 // matrix stack
@@ -156,6 +191,9 @@ pub const ofTranslate_sig: Signature = .{ .name = "ofTranslate", .args = &.{ f32
 pub fn translate(x: f32, y: f32, z: f32) void {
     cpp.bind(ofTranslate_sig)(x, y, z);
 }
+pub fn translatei(x: i32, y: i32, z: i32) void {
+    translate(@floatFromInt(x), @floatFromInt(y), @floatFromInt(z));
+}
 /// `ofRotateRad(radians)`: about the z axis. oF spells this rotation twice,
 /// as `ofRotateDeg` and `ofRotateRad`; this package binds the radian half of
 /// every such pair and drops the suffix, so a Zig angle is always radians.
@@ -171,6 +209,9 @@ pub fn rotateAxis(radians: f32, x: f32, y: f32, z: f32) void {
 pub const ofScale_sig: Signature = .{ .name = "ofScale", .args = &.{ f32, f32, f32 } };
 pub fn scale(x: f32, y: f32, z: f32) void {
     cpp.bind(ofScale_sig)(x, y, z);
+}
+pub fn scalei(x: i32, y: i32, z: i32) void {
+    scale(@floatFromInt(x), @floatFromInt(y), @floatFromInt(z));
 }
 
 /// `ofMatrixMode`: which stack `ofGetCurrentMatrix` and `ofSetMatrixMode` mean.
