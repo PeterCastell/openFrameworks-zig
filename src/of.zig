@@ -173,7 +173,9 @@ pub const disableAntiAliasing = graphics.disableAntiAliasing;
 
 // Math.
 pub const random = math.random;
+pub const randomi = math.randomi;
 pub const randomRange = math.randomRange;
+pub const randomRangei = math.randomRangei;
 pub const seedRandom = math.seedRandom;
 pub const map = math.map;
 pub const clamp = math.clamp;

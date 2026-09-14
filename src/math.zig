@@ -187,6 +187,43 @@ pub fn randomRange(min: f32, max: f32) f32 {
     return cpp.bind(ofRandom_range_sig)(min, max);
 }
 
+/// A uniform `u64` in `[0, span)`, and `0` when `span` is. The shared core of
+/// `randomi` and `randomRangei`: both draw a non-negative offset here and then
+/// step away from their first argument, so neither ever has to round a
+/// negative float -- `@intFromFloat` truncates toward zero, which would bias
+/// a negative range toward `0`.
+fn randomOffset(span: u64) u64 {
+    if (span == 0) return 0;
+    // Widen before narrowing: `@floatFromInt` rounds a large span upward, and
+    // `uniform_real_distribution` can return its upper bound outright, so the
+    // raw draw does not reliably land inside `[0, span)`.
+    const n: u64 = @intFromFloat(random(@floatFromInt(span)));
+    return @min(n, span - 1);
+}
+
+/// `ofRandom(max)` with an integer result: inclusive of `0` and exclusive of
+/// `max`, whichever of the two is the larger. `randomi(4)` draws from
+/// `0...3`, `randomi(-4)` from `-3...0`, and `randomi(0)` is `0`.
+///
+/// Note oF's own integer distribution, `of::random::uniform<int>`, is
+/// inclusive of `max` and rejects a negative one.
+pub fn randomi(max: i32) i32 {
+    return randomRangei(0, max);
+}
+
+/// `ofRandom(min, max)` with an integer result: inclusive of `from` and
+/// exclusive of `to`, in whichever direction the two run.
+/// `randomRangei(2, 6)` draws from `2...5`, `randomRangei(6, 2)` from `6...3`,
+/// and `randomRangei(n, n)` is `n`.
+pub fn randomRangei(from: i32, to: i32) i32 {
+    const span: u64 = @abs(@as(i64, to) - @as(i64, from));
+    const offset: i64 = @intCast(randomOffset(span));
+    // i64 throughout: the span of the full `i32` range does not fit an `i32`,
+    // though every result does.
+    const r: i64 = if (to < from) @as(i64, from) - offset else @as(i64, from) + offset;
+    return @intCast(r);
+}
+
 /// `ofSeedRandom(seed)`
 pub const ofSeedRandom_sig: Signature = .{ .name = "ofSeedRandom", .args = &.{i32} };
 pub fn seedRandom(seed: i32) void {
