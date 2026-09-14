@@ -161,6 +161,28 @@ pub fn drawTrianglei(x1: i32, y1: i32, x2: i32, y2: i32, x3: i32, y3: i32) void 
     drawTriangle(@floatFromInt(x1), @floatFromInt(y1), @floatFromInt(x2), @floatFromInt(y2), @floatFromInt(x3), @floatFromInt(y3));
 }
 
+/// `ofDrawBitmapMode`: where `drawBitmapString` puts its text. oF starts in
+/// `.screen`.
+pub const DrawBitmapMode = enum(i32) {
+    /// 2D only: z is discarded, so a nonzero z draws in the wrong place.
+    simple = 0,
+    /// Projects the 3D position onto the window. The letters keep one size.
+    screen = 1,
+    /// `.screen`, against the current viewport rather than the whole window.
+    viewport = 2,
+    /// Real 3D coordinates, so text off the z=0 plane is scaled.
+    model = 3,
+    /// Real 3D coordinates, but the text always faces the camera.
+    model_billboard = 4,
+    pub const cpp_name = "ofDrawBitmapMode";
+    pub const cpp_kind: cpp.Kind = .@"enum";
+};
+
+pub const ofSetDrawBitmapMode_sig: Signature = .{ .name = "ofSetDrawBitmapMode", .args = &.{DrawBitmapMode} };
+pub fn setDrawBitmapMode(mode: DrawBitmapMode) void {
+    cpp.bind(ofSetDrawBitmapMode_sig)(mode);
+}
+
 /// `template<> void ofDrawBitmapString(const std::string&, float x, float y, float z)`,
 /// a specialization of `template<typename T> void ofDrawBitmapString(const T&, float, float, float)`.
 pub const ofDrawBitmapString_sig: Signature = .{

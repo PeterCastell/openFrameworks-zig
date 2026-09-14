@@ -272,7 +272,8 @@ the methods of those types, and its free functions:
 |---|---|
 | `app.zig` | `run`, the window, frame, time and input queries, the callback table behind `run`. |
 | `graphics.zig` | The immediate-mode drawing calls of `ofGraphics.h`. |
-| `color.zig`, `math.zig`, `rectangle.zig`, `string.zig` | `Color`, `glm::vec*` (float, `int`, `unsigned`) and `ofMath.h`, `ofRectangle`, `std::string`. |
+| `font.zig` | `ofTrueTypeFont`: loading a face, measuring a string, drawing one. Also `ofTrueTypeFontSettings` and the `ofUnicode` ranges. |
+| `color.zig`, `math.zig`, `rectangle.zig`, `string.zig` | `Color`, `glm::vec*` (float, `int`, `unsigned`) and `ofMath.h`, `ofRectangle`, and the `std::string`, `std::wstring` and `std::filesystem::path` that oF calls take. |
 | `matrix.zig` | `glm::mat3`, `glm::mat4`, `glm::quat`, and the `Transform` that composes them. |
 | `events.zig` | The event-argument types and the key, modifier and mouse-button constants. |
 | `of.zig` | Re-exports everything flat, and is the root the glue scan starts from. |
@@ -296,7 +297,10 @@ its type.
 A type is an `extern struct`. It describes its C++ class to cpp-bindgen with
 `cpp_name` or `cpp_template` and `cpp_abi`, and it contains its own methods. Its
 field names are the C++ member names, because the glue checks each name with
-`offsetof`.
+`offsetof`. A field whose name starts with `_` is not checked. That is how a
+binding spells a vtable pointer, and how `Font` gives the storage of
+`ofTrueTypeFont` instead of its two dozen members: the glue still checks the
+size and the alignment, which is all a caller of that class depends on.
 
 The build compiles two pieces of C++ into the library, in addition to oF:
 
@@ -320,9 +324,11 @@ that the bindings describe are also release layouts.
 ## Known limits
 
 - **Coverage.** This is the first part of the API: the app lifecycle and events,
-  the 2D drawing calls in `ofGraphics.h`, colors, `ofRectangle`, the math
-  helpers, and `std::string`. To add any other oF function, write one
+  the 2D drawing calls in `ofGraphics.h`, TrueType text, colors, `ofRectangle`,
+  the math helpers, and `std::string`. To add any other oF function, write one
   `Signature`. The glue reports an error if that signature is incorrect.
+- **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name
+  longer than 512 UTF-16 code units does not load. See `string.Path`.
 
 ## Adding a binding
 
