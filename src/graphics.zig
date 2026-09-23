@@ -3,6 +3,7 @@
 //! Every call taking coordinates also has an `i` variant taking integer
 //! pixels, where positions are `i32` and extents `u32` to match `getMouseX`
 //! and `getWidth`, so the screen queries compose without a cast.
+const std = @import("std");
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
@@ -14,6 +15,9 @@ const Vec2I = math.Vec2I;
 const GlmVec2 = math.GlmVec2;
 const String = @import("string.zig").String;
 const Mat4 = @import("matrix.zig").Mat4;
+const rectangle = @import("rectangle.zig");
+const Rectangle = rectangle.Rectangle;
+const OfRectangle = rectangle.OfRectangle;
 
 /// `ofRectMode`
 pub const RectMode = enum(i32) {
@@ -323,4 +327,45 @@ pub fn enableAntiAliasing() void {
 pub const ofDisableAntiAliasing_sig: Signature = .{ .name = "ofDisableAntiAliasing" };
 pub fn disableAntiAliasing() void {
     cpp.bind(ofDisableAntiAliasing_sig)();
+}
+
+// viewport and screen setup
+
+/// `ofGetCurrentViewport()`: the window, or what `viewport` last set, or a
+/// camera's while its `begin` is active.
+pub const ofGetCurrentViewport_sig: Signature = .{ .name = "ofGetCurrentViewport", .ret = OfRectangle };
+pub fn getCurrentViewport() Rectangle {
+    var box: OfRectangle = undefined;
+    cpp.bind(ofGetCurrentViewport_sig)(&box);
+    defer box.deinit();
+    return .fromOf(box);
+}
+/// `ofViewport(x, y, width, height, vflip)`: restricts drawing to a part
+/// of the window. `vflip` is whether y runs down, which `isVFlipped` reads.
+pub const ofViewport_sig: Signature = .{ .name = "ofViewport", .args = &.{ f32, f32, f32, f32, bool } };
+pub fn viewport(r: Rectangle, vflip: bool) void {
+    cpp.bind(ofViewport_sig)(r.position[0], r.position[1], r.size[0], r.size[1], vflip);
+}
+pub const ofIsVFlipped_sig: Signature = .{ .name = "ofIsVFlipped", .ret = bool };
+pub fn isVFlipped() bool {
+    return cpp.bind(ofIsVFlipped_sig)();
+}
+/// `ofSetupScreen()`: back to oF's default 2D projection, where a unit is
+/// a pixel and the origin is the top left. `Camera.end` does this too.
+pub const ofSetupScreen_sig: Signature = .{ .name = "ofSetupScreen" };
+pub fn setupScreen() void {
+    cpp.bind(ofSetupScreen_sig)();
+}
+/// `ofSetupScreenPerspective(width, height, fov, nearDist, farDist)`, with
+/// `fov` in radians. `0` for a size means the window's, `0` for a clip
+/// distance lets oF choose one from the field of view.
+pub const ofSetupScreenPerspective_sig: Signature = .{ .name = "ofSetupScreenPerspective", .args = &.{ f32, f32, f32, f32, f32 } };
+pub fn setupScreenPerspective(width: f32, height: f32, fov: f32, near_clip: f32, far_clip: f32) void {
+    cpp.bind(ofSetupScreenPerspective_sig)(width, height, std.math.radiansToDegrees(fov), near_clip, far_clip);
+}
+/// `ofSetupScreenOrtho(width, height, nearDist, farDist)`. `0` for a size
+/// means the window's.
+pub const ofSetupScreenOrtho_sig: Signature = .{ .name = "ofSetupScreenOrtho", .args = &.{ f32, f32, f32, f32 } };
+pub fn setupScreenOrtho(width: f32, height: f32, near_clip: f32, far_clip: f32) void {
+    cpp.bind(ofSetupScreenOrtho_sig)(width, height, near_clip, far_clip);
 }

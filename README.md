@@ -72,7 +72,53 @@ pub fn main() u8 {
 `of.run` connects the handlers that the app type declares. These handlers are
 `setup`, `update`, `draw`, `exit`, and the key, mouse, touch, resize, drag and
 message handlers. `of.run` then starts the oF main loop. See
-[example/main.zig](example/main.zig).
+[example/main.zig](example/main.zig) for the 2D calls and
+[example/3d.zig](example/3d.zig) for a camera, a primitive and a light.
+
+## 3D
+
+`of.EasyCam`, `of.Camera`, the six primitives (`of.BoxPrimitive` and the rest)
+and `of.Light` are all `ofNode`s in C++. Each Zig type binds the methods that
+its own class declares, and reaches a base class through an accessor:
+
+```zig
+var cam: of.EasyCam = undefined;     // a field of the app struct
+cam.init();                          // in setup; deinit in exit
+
+cam.node().setPosition(.{ 0, 250, 450 });   // ofNode, two levels up
+cam.node().lookAt(.{ 0, 0, 0 });
+cam.camera().setFov(std.math.pi / 3.0);     // ofCamera, one level up
+
+cam.begin();                         // in draw
+of.drawGrid(50, 4, .{ .x = false, .y = true, .z = false });
+of.drawCylinder(10, 40);
+cam.end();
+```
+
+`node()` and `camera()` are `cpp.basePtr`: an upcast that cpp-bindgen checks
+at compile time against the `cpp_bases` that the type declares. The
+immediate-mode solids (`drawBox`, `drawSphere`, `drawCylinder`, `drawCone`,
+`drawPlane`, `drawIcoSphere`, each with an `At` form that takes a `Vec3`),
+`drawAxis`, `drawGrid`, `drawArrow` and the lighting switches are free
+functions on `of`.
+
+`of.Mesh` is `ofMesh`. Its bulk calls take slices of the ABI types and hand
+them to oF's pointer-and-length overloads, so nothing is copied on the way in;
+its getters return the mesh's own arrays as slices, so nothing is copied on the
+way out either:
+
+```zig
+var mesh: of.Mesh = undefined;
+mesh.init();
+mesh.setMode(.triangle_fan);
+mesh.addVertices(&.{ .{ .x = 0, .y = 0, .z = 0 }, .{ .x = 50, .y = 0, .z = 0 }, .{ .x = 0, .y = 50, .z = 0 } });
+for (mesh.getVertices()) |*v| v.y += 10;   // in place
+mesh.draw();
+```
+
+The slices are of `GlmVec3`, not `Vec3`: a `Vec3` is 16 bytes and a
+`glm::vec3` is 12, so an array of one is not an array of the other. A
+primitive's `getMesh()` returns the mesh it draws, for editing in place.
 
 ## Vectors
 
@@ -302,6 +348,37 @@ binding spells a vtable pointer, and how `Font` gives the storage of
 `ofTrueTypeFont` instead of its two dozen members: the glue still checks the
 size and the alignment, which is all a caller of that class depends on.
 
+A class with a base declares it in `cpp_bases` and starts with the field that
+cpp-bindgen sizes for it:
+
+```zig
+pub const Camera = extern struct {
+    _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),   // the ofNode
+    _storage: [56]u8 align(8),                                     // what ofCamera adds
+    pub const cpp_name = "ofCamera";
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_bases: []const type = &.{Node};
+    pub const cpp_virtual_dtor = true;
+
+    pub fn node(self: *Camera) *Node {
+        return cpp.basePtr(Node, self);
+    }
+};
+```
+
+`_storage` is the size of the class minus the size of its base, which is
+where MSVC puts a derived class's own members. cpp-bindgen computes the base's
+offset, `basePtr` is the checked upcast, and the glue asserts that the base is
+one and that the whole class has the declared size. A method that the base
+declares is bound once, on the base; a derived type reaches it through the
+accessor. The one exception is a method that pairs with one the derived class
+overrides, such as `EasyCam.end` beside `EasyCam.begin`: it is bound on the
+derived type with `.class = Camera`, which cpp-bindgen checks the same way. A
+virtual method is marked `.virtual = true` in its `Signature`, because MSVC
+mangles it differently; the call is still a direct call to that class's
+implementation, so `Camera.begin` on an `EasyCam` would run `ofCamera::begin`,
+which is why `EasyCam` binds its own.
+
 The build compiles two pieces of C++ into the library, in addition to oF:
 
 - **The generated glue.** `build.zig` points cpp-bindgen at `src/of.zig` and the
@@ -323,10 +400,16 @@ that the bindings describe are also release layouts.
 
 ## Known limits
 
-- **Coverage.** This is the first part of the API: the app lifecycle and events,
-  the 2D drawing calls in `ofGraphics.h`, TrueType text, colors, `ofRectangle`,
-  the math helpers, and `std::string`. To add any other oF function, write one
-  `Signature`. The glue reports an error if that signature is incorrect.
+- **Coverage.** The app lifecycle and events, the 2D drawing calls in
+  `ofGraphics.h`, the 3D ones in `of3dGraphics.h` and `of3dUtils.h`, `ofNode`,
+  `ofCamera`, `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`,
+  `ofLight`, TrueType text, colors, `ofRectangle`, the math helpers, and
+  `std::string`. The sound, video, image, texture and shader classes are not
+  bound. To add any other oF function, write one `Signature`. The glue
+  reports an error if that signature is incorrect.
+- **Subclassing.** A Zig type cannot override a C++ virtual function, so an
+  `ofNode` with a custom `customDraw`, or an `ofBaseApp` other than the one
+  `src/cpp/ofzig_app.cpp` supplies, cannot be written in Zig.
 - **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name
   longer than 512 UTF-16 code units does not load. See `string.Path`.
 

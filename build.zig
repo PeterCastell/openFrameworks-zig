@@ -73,24 +73,41 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
     of_mod.linkLibrary(lib);
 
-    // Example app, also the smoke test of the whole chain.
-    const example_mod = b.createModule(.{
-        .root_source_file = b.path("example/main.zig"),
+    // Example apps, also the smoke tests of the whole chain: `main.zig` is
+    // the 2D one, `3d.zig` the camera, primitives and light.
+    addExample(b, of_mod, target, optimize, "example", "example/main.zig", "example", "run", "the 2D example app");
+    addExample(b, of_mod, target, optimize, "example-3d", "example/3d.zig", "example-3d", "run-3d", "the 3D example app");
+
+    const glue_step = b.step("glue", "Write the generated C++ glue to zig-out/glue for inspection");
+    glue_step.dependOn(&b.addInstallFile(glue, "glue/of_glue.cpp").step);
+}
+
+/// One example executable, with a build step and a run step. The run step
+/// runs from `example/`, which is where a sketch's `bin/data` would be.
+fn addExample(
+    b: *std.Build,
+    of_mod: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    name: []const u8,
+    source: []const u8,
+    build_step: []const u8,
+    run_step: []const u8,
+    what: []const u8,
+) void {
+    const mod = b.createModule(.{
+        .root_source_file = b.path(source),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    example_mod.addImport("of", of_mod);
-    const example = b.addExecutable(.{ .name = "example", .root_module = example_mod, .linkage = .dynamic });
-    const example_step = b.step("example", "Build the example app");
-    example_step.dependOn(&b.addInstallArtifact(example, .{}).step);
+    mod.addImport("of", of_mod);
+    const exe = b.addExecutable(.{ .name = name, .root_module = mod, .linkage = .dynamic });
+    b.step(build_step, b.fmt("Build {s}", .{what})).dependOn(&b.addInstallArtifact(exe, .{}).step);
 
-    const run_example = b.addRunArtifact(example);
-    run_example.setCwd(b.path("example"));
-    b.step("run", "Run the example app").dependOn(&run_example.step);
-
-    const glue_step = b.step("glue", "Write the generated C++ glue to zig-out/glue for inspection");
-    glue_step.dependOn(&b.addInstallFile(glue, "glue/of_glue.cpp").step);
+    const run = b.addRunArtifact(exe);
+    run.setCwd(b.path("example"));
+    b.step(run_step, b.fmt("Run {s}", .{what})).dependOn(&run.step);
 }
 
 /// The compile and link lines of oF's own `openframeworksLib.vcxproj` and

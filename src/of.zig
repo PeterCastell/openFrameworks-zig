@@ -23,12 +23,18 @@
 const std = @import("std");
 
 pub const app = @import("app.zig");
+pub const camera = @import("camera.zig");
 pub const color = @import("color.zig");
 pub const events = @import("events.zig");
 pub const font = @import("font.zig");
 pub const graphics = @import("graphics.zig");
+pub const graphics3d = @import("graphics3d.zig");
+pub const light = @import("light.zig");
 pub const math = @import("math.zig");
 pub const matrix = @import("matrix.zig");
+pub const mesh = @import("mesh.zig");
+pub const node = @import("node.zig");
+pub const primitives = @import("primitives.zig");
 pub const rectangle = @import("rectangle.zig");
 pub const string = @import("string.zig");
 
@@ -78,6 +84,26 @@ pub const Message = events.Message;
 pub const key = events.key;
 pub const modifier = events.modifier;
 pub const mouse_button = events.mouse_button;
+
+// 3D. Each of these classes is an `ofNode`; `x.node()` reaches that API.
+pub const Node = node.Node;
+pub const BaseRenderer = node.BaseRenderer;
+pub const Camera = camera.Camera;
+pub const EasyCam = camera.EasyCam;
+pub const Primitive = primitives.Primitive;
+pub const PlanePrimitive = primitives.PlanePrimitive;
+pub const SpherePrimitive = primitives.SpherePrimitive;
+pub const IcoSpherePrimitive = primitives.IcoSpherePrimitive;
+pub const CylinderPrimitive = primitives.CylinderPrimitive;
+pub const ConePrimitive = primitives.ConePrimitive;
+pub const BoxPrimitive = primitives.BoxPrimitive;
+pub const PolyRenderMode = primitives.PolyRenderMode;
+pub const PrimitiveMode = primitives.PrimitiveMode;
+pub const BoundingBox = primitives.BoundingBox;
+pub const Mesh = mesh.Mesh;
+pub const Light = light.Light;
+pub const LightType = light.LightType;
+pub const GridOptions = graphics3d.GridOptions;
 
 // App, window, frames, input.
 pub const run = app.run;
@@ -177,6 +203,56 @@ pub const enableSmoothing = graphics.enableSmoothing;
 pub const disableSmoothing = graphics.disableSmoothing;
 pub const enableAntiAliasing = graphics.enableAntiAliasing;
 pub const disableAntiAliasing = graphics.disableAntiAliasing;
+pub const getCurrentViewport = graphics.getCurrentViewport;
+pub const viewport = graphics.viewport;
+pub const isVFlipped = graphics.isVFlipped;
+pub const setupScreen = graphics.setupScreen;
+pub const setupScreenPerspective = graphics.setupScreenPerspective;
+pub const setupScreenOrtho = graphics.setupScreenOrtho;
+
+// 3D drawing.
+pub const drawAxis = graphics3d.drawAxis;
+pub const drawGrid = graphics3d.drawGrid;
+pub const drawGridPlane = graphics3d.drawGridPlane;
+pub const drawArrow = graphics3d.drawArrow;
+pub const drawRotationAxes = graphics3d.drawRotationAxes;
+pub const setPlaneResolution = graphics3d.setPlaneResolution;
+pub const getPlaneResolution = graphics3d.getPlaneResolution;
+pub const drawPlane = graphics3d.drawPlane;
+pub const drawPlaneAt = graphics3d.drawPlaneAt;
+pub const setSphereResolution = graphics3d.setSphereResolution;
+pub const getSphereResolution = graphics3d.getSphereResolution;
+pub const drawSphere = graphics3d.drawSphere;
+pub const drawSphereAt = graphics3d.drawSphereAt;
+pub const setIcoSphereResolution = graphics3d.setIcoSphereResolution;
+pub const getIcoSphereResolution = graphics3d.getIcoSphereResolution;
+pub const drawIcoSphere = graphics3d.drawIcoSphere;
+pub const drawIcoSphereAt = graphics3d.drawIcoSphereAt;
+pub const setCylinderResolution = graphics3d.setCylinderResolution;
+pub const getCylinderResolution = graphics3d.getCylinderResolution;
+pub const drawCylinder = graphics3d.drawCylinder;
+pub const drawCylinderAt = graphics3d.drawCylinderAt;
+pub const setConeResolution = graphics3d.setConeResolution;
+pub const getConeResolution = graphics3d.getConeResolution;
+pub const drawCone = graphics3d.drawCone;
+pub const drawConeAt = graphics3d.drawConeAt;
+pub const setBoxResolution = graphics3d.setBoxResolution;
+pub const setBoxResolution3 = graphics3d.setBoxResolution3;
+pub const getBoxResolution = graphics3d.getBoxResolution;
+pub const drawBox = graphics3d.drawBox;
+pub const drawBoxAt = graphics3d.drawBoxAt;
+pub const drawCube = graphics3d.drawCube;
+pub const drawCubeAt = graphics3d.drawCubeAt;
+
+// Lighting.
+pub const enableLighting = light.enableLighting;
+pub const disableLighting = light.disableLighting;
+pub const getLightingEnabled = light.getLightingEnabled;
+pub const enableSeparateSpecularLight = light.enableSeparateSpecularLight;
+pub const disableSeparateSpecularLight = light.disableSeparateSpecularLight;
+pub const setSmoothLighting = light.setSmoothLighting;
+pub const setGlobalAmbientColor = light.setGlobalAmbientColor;
+pub const getGlobalAmbientColor = light.getGlobalAmbientColor;
 
 // Math.
 pub const random = math.random;

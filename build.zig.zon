@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.17.0-dev.1683+5ceec001b",
     .dependencies = .{
         .cpp_bindgen = .{
-            .url = "git+https://github.com/PeterCastell/cpp-bindgen.git#8f28ab645f96c30cf124cf0a4959851625d1adfe",
-            .hash = "cpp_bindgen-0.0.0-wmMqGDSzAgDARu-6O8poPtJJLT7K52F_TnYSiq1etES9",
+            .url = "git+https://github.com/PeterCastell/cpp-bindgen.git#3ea64425cc1bedf383860547d82702e82fd6990b",
+            .hash = "cpp_bindgen-0.0.0-wmMqGIU7AwD3dS4enE2mciG1n5f1a-CQGjllQHOS9VEm",
         },
     },
     .paths = .{
