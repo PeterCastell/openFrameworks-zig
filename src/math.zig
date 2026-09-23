@@ -22,6 +22,7 @@
 //! `cpp_abi` describe the class to cpp-bindgen, and its field names are the
 //! C++ member names because the generated glue checks each one with
 //! `offsetof` against the real header.
+const std = @import("std");
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 
@@ -242,10 +243,70 @@ pub fn clamp(value: f32, min: f32, max: f32) f32 {
     return cpp.bind(ofClamp_sig)(value, min, max);
 }
 
-/// `ofLerp`
-pub const ofLerp_sig: Signature = .{ .name = "ofLerp", .args = &.{ f32, f32, f32 }, .ret = f32 };
-pub fn lerp(start: f32, stop: f32, amount: f32) f32 {
-    return cpp.bind(ofLerp_sig)(start, stop, amount);
+/// `ofLerp`, generic: `start + (stop - start) * amount`, for a float or
+/// integer scalar, a `@Vector` of either, or any of the three color types.
+/// Not clamped, so an `amount` outside `[0, 1]` extrapolates, as oF's does.
+///
+/// A literal coerces to the other argument's type, so `lerp(0, width, t)`
+/// works, and two literals lerp as `f32`. An integer result -- an `i32`,
+/// a `Vec2I`, a `Color` channel -- is rounded to nearest; oF's color lerp
+/// truncates instead, which is a bias of up to one count toward zero.
+///
+/// This is Zig arithmetic rather than a call: `ofLerp` is one line, and a
+/// C++ function cannot be generic over these types anyway. `Color.lerp` is
+/// still oF's own, in place.
+pub fn lerp(start: anytype, stop: anytype, amount: f32) LerpType(@TypeOf(start), @TypeOf(stop)) {
+    const T = LerpType(@TypeOf(start), @TypeOf(stop));
+    const a: T = start;
+    const b: T = stop;
+    switch (@typeInfo(T)) {
+        .float => return a + (b - a) * amount,
+        .int => return @intFromFloat(@round(lerp(@as(f32, @floatFromInt(a)), @as(f32, @floatFromInt(b)), amount))),
+        .vector => |v| switch (@typeInfo(v.child)) {
+            .float => return a + (b - a) * @as(T, @splat(amount)),
+            .int => {
+                const F = @Vector(v.len, f32);
+                const fa: F = @floatFromInt(a);
+                const fb: F = @floatFromInt(b);
+                return @intFromFloat(@round(lerp(fa, fb, amount)));
+            },
+            else => @compileError("lerp: a vector of " ++ @typeName(v.child) ++ " is not numeric"),
+        },
+        .@"struct" => {
+            if (comptime !isColor(T)) @compileError("lerp: " ++ @typeName(T) ++ " is not a scalar, a vector or a color");
+            return .{
+                .r = lerp(a.r, b.r, amount),
+                .g = lerp(a.g, b.g, amount),
+                .b = lerp(a.b, b.b, amount),
+                .a = lerp(a.a, b.a, amount),
+            };
+        },
+        else => @compileError("lerp: " ++ @typeName(T) ++ " is not a scalar, a vector or a color"),
+    }
+}
+
+/// The type two `lerp` arguments agree on: a literal takes the other
+/// argument's type, and two literals are `f32`. A literal is a number
+/// (`comptime_int`, `comptime_float`) or a tuple such as `.{ 10, 20, 30 }`,
+/// which coerces to a vector.
+fn LerpType(comptime A: type, comptime B: type) type {
+    const a_lit = isLiteral(A);
+    const b_lit = isLiteral(B);
+    if (a_lit and b_lit) return f32;
+    if (a_lit) return B;
+    if (b_lit) return A;
+    if (A != B) @compileError("lerp: " ++ @typeName(A) ++ " and " ++ @typeName(B) ++ " are different types");
+    return A;
+}
+
+fn isLiteral(comptime T: type) bool {
+    if (T == comptime_float or T == comptime_int) return true;
+    return @typeInfo(T) == .@"struct" and @typeInfo(T).@"struct".is_tuple;
+}
+
+/// One of the three `ofColor_` types, by the C++ class it declares.
+fn isColor(comptime T: type) bool {
+    return @hasDecl(T, "cpp_template") and std.mem.eql(u8, T.cpp_template.name, "ofColor_");
 }
 
 /// `ofNoise(x)`: Perlin noise in `[0, 1]`.

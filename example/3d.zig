@@ -98,6 +98,12 @@ const App = struct {
             self.box.getBoundingBox().min.to(),
             self.box.getBoundingBox().max.to(),
         });
+        std.debug.print("setup: lerp {d} {d} {d} {d}\n", .{
+            of.lerp(0, 10, 0.25), // two literals: f32
+            of.lerp(@as(u32, 100), 200, 0.5), // an integer, rounded
+            of.lerp(of.Vec3{ 0, 0, 0 }, .{ 10, 20, 30 }, 0.5), // a tuple coerces to the vector
+            of.lerp(of.Color.black, of.Color.white, 0.5).r,
+        });
         std.debug.print("setup: orange hue {d:.0}/255 = {d:.3}/1 = {d:.1} deg, hex {x}, short {d}\n", .{
             orange.getHue(),
             orange_f.getHue(),
@@ -151,7 +157,10 @@ const App = struct {
             defer of.popMatrix();
             of.translate(0, snake_radius, 0);
             of.multMatrix(frame);
-            of.setColor(of.Color.rgb(0, 255 - @as(u8, @intCast(i)) * color_gradient_slope, 0));
+            // `lerp` is generic: this one blends two colors, and `setup`
+            // puts a scalar and a vector through the same function.
+            const along = @as(f32, @floatFromInt(i)) / @as(f32, snake_len);
+            of.setColor(of.lerp(of.Color.rgb(0, 255, 0), of.Color.rgb(0, 255 - snake_len * color_gradient_slope, 0), along));
             of.drawCylinder(snake_radius, of.length(vec));
             last_pos = pos;
         }
