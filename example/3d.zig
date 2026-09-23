@@ -71,18 +71,39 @@ const App = struct {
         for (1..8) |i| {
             const a = @as(f32, @floatFromInt(i - 1)) / 6.0 * std.math.tau;
             verts[i] = .{ .x = 60 * @cos(a), .y = 1, .z = 60 * @sin(a) };
-            colors[i] = .{ .r = 0.2, .g = 0.4 + 0.5 * @as(f32, @floatFromInt(i % 2)), .b = 0.9 };
+            // A `FloatColor` takes its hue in `[0, 1]`; the same call on a
+            // `Color` would take it in `[0, 255]`.
+            colors[i] = of.FloatColor.fromHsb(@as(f32, @floatFromInt(i - 1)) / 6.0, 0.8, 1, 1);
         }
         self.fan.addVertices(&verts);
         self.fan.addColors(&colors);
         // The getters return the mesh's own arrays: edit them in place.
         for (self.fan.getVertices()) |*v| v.x *= 1.5;
-        std.debug.print("setup: fan has {d} vertices, {d} colors, centroid {d:.1}, box bounds {d:.0} to {d:.0}\n", .{
+
+        // A copy owns its own arrays: clearing it leaves the fan alone.
+        var copy: of.Mesh = undefined;
+        copy.initCopy(&self.fan);
+        const copied = copy.getNumVertices();
+        copy.clear();
+        copy.deinit();
+
+        // The same color in the three channel widths, and its hue as an angle.
+        const orange = of.Color.rgb(255, 128, 0);
+        const orange_f: of.FloatColor = .from(orange);
+        std.debug.print("setup: fan has {d} vertices, {d} colors (copy had {d}), centroid {d:.1}, box bounds {d:.0} to {d:.0}\n", .{
             self.fan.getNumVertices(),
             self.fan.getColorsConst().len,
+            copied,
             self.fan.getCentroid(),
             self.box.getBoundingBox().min.to(),
             self.box.getBoundingBox().max.to(),
+        });
+        std.debug.print("setup: orange hue {d:.0}/255 = {d:.3}/1 = {d:.1} deg, hex {x}, short {d}\n", .{
+            orange.getHue(),
+            orange_f.getHue(),
+            std.math.radiansToDegrees(orange_f.getHueAngle()),
+            orange.getHex(),
+            of.ShortColor.from(orange).g,
         });
 
         // The camera is an ofNode two levels up; `node()` is the checked

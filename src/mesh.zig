@@ -108,9 +108,9 @@ pub const IndexVector = Vector(u32);
 /// `ofMesh`, which is `ofMesh_<glm::vec3, glm::vec3, ofFloatColor, glm::vec2>`.
 ///
 /// Six `std::vector`s behind a vtable pointer; the binding gives the storage
-/// and reaches the arrays through the getters. The class has no pointer to
-/// itself, but it owns heap, so as with every class here: construct it
-/// where it will live, and `deinit` it.
+/// and reaches the arrays through the getters. It owns heap, so `deinit`
+/// it; to duplicate one, `initCopy`. See there for why `a = b` is a move
+/// and not a copy.
 pub const Mesh = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
     _storage: [160]u8 align(8),
@@ -128,6 +128,18 @@ pub const Mesh = extern struct {
     /// with colors, normals, textures and indices all enabled.
     pub fn init(self: *Mesh) void {
         bind(ctor_sig)(self);
+    }
+    /// `ofMesh(const ofMesh&)`: runs the copy constructor on the storage of
+    /// `self`, which must be uninitialized. Every array is copied, so the
+    /// two meshes then own separate heap. Takes the place of `init`.
+    ///
+    /// A plain `dest = src` in Zig is not a copy: both would then own the
+    /// same heap and the first to grow or `deinit` frees it under the other.
+    /// It is a valid *move*, though -- the class holds no pointer to itself
+    /// -- as long as `src` is then abandoned without a `deinit`.
+    pub const copy_ctor_sig: Signature = .{ .name = "*", .this = *Mesh, .args = &.{Ref(*const Mesh)} };
+    pub fn initCopy(self: *Mesh, other: *const Mesh) void {
+        bind(copy_ctor_sig)(self, other);
     }
     pub const dtor_sig: Signature = .{ .name = "~", .this = *Mesh };
     pub fn deinit(self: *Mesh) void {
