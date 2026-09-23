@@ -243,9 +243,9 @@ pub fn clamp(value: f32, min: f32, max: f32) f32 {
     return cpp.bind(ofClamp_sig)(value, min, max);
 }
 
-/// `ofLerp`, generic: `start + (stop - start) * amount`, for a float or
-/// integer scalar, a `@Vector` of either, or any of the three color types.
-/// Not clamped, so an `amount` outside `[0, 1]` extrapolates, as oF's does.
+/// `ofLerp`, generic: `a + (b - a) * t`, for a float or integer scalar, a
+/// `@Vector` of either, or any of the three color types. Not clamped, so a
+/// `t` outside `[0, 1]` extrapolates, as oF's does.
 ///
 /// A literal coerces to the other argument's type, so `lerp(0, width, t)`
 /// works, and two literals lerp as `f32`. An integer result -- an `i32`,
@@ -255,30 +255,30 @@ pub fn clamp(value: f32, min: f32, max: f32) f32 {
 /// This is Zig arithmetic rather than a call: `ofLerp` is one line, and a
 /// C++ function cannot be generic over these types anyway. `Color.lerp` is
 /// still oF's own, in place.
-pub fn lerp(start: anytype, stop: anytype, amount: f32) LerpType(@TypeOf(start), @TypeOf(stop)) {
-    const T = LerpType(@TypeOf(start), @TypeOf(stop));
-    const a: T = start;
-    const b: T = stop;
+pub fn lerp(a: anytype, b: anytype, t: f32) LerpType(@TypeOf(a), @TypeOf(b)) {
+    const T = LerpType(@TypeOf(a), @TypeOf(b));
+    const from: T = a;
+    const to: T = b;
     switch (@typeInfo(T)) {
-        .float => return a + (b - a) * amount,
-        .int => return @intFromFloat(@round(lerp(@as(f32, @floatFromInt(a)), @as(f32, @floatFromInt(b)), amount))),
+        .float => return from + (to - from) * t,
+        .int => return @intFromFloat(@round(lerp(@as(f32, @floatFromInt(from)), @as(f32, @floatFromInt(to)), t))),
         .vector => |v| switch (@typeInfo(v.child)) {
-            .float => return a + (b - a) * @as(T, @splat(amount)),
+            .float => return from + (to - from) * @as(T, @splat(t)),
             .int => {
                 const F = @Vector(v.len, f32);
-                const fa: F = @floatFromInt(a);
-                const fb: F = @floatFromInt(b);
-                return @intFromFloat(@round(lerp(fa, fb, amount)));
+                const ff: F = @floatFromInt(from);
+                const ft: F = @floatFromInt(to);
+                return @intFromFloat(@round(lerp(ff, ft, t)));
             },
             else => @compileError("lerp: a vector of " ++ @typeName(v.child) ++ " is not numeric"),
         },
         .@"struct" => {
             if (comptime !isColor(T)) @compileError("lerp: " ++ @typeName(T) ++ " is not a scalar, a vector or a color");
             return .{
-                .r = lerp(a.r, b.r, amount),
-                .g = lerp(a.g, b.g, amount),
-                .b = lerp(a.b, b.b, amount),
-                .a = lerp(a.a, b.a, amount),
+                .r = lerp(from.r, to.r, t),
+                .g = lerp(from.g, to.g, t),
+                .b = lerp(from.b, to.b, t),
+                .a = lerp(from.a, to.a, t),
             };
         },
         else => @compileError("lerp: " ++ @typeName(T) ++ " is not a scalar, a vector or a color"),

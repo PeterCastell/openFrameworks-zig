@@ -98,7 +98,7 @@ cam.end();
 `node()` and `camera()` are `cpp.basePtr`: an upcast that cpp-bindgen checks
 at compile time against the `cpp_bases` that the type declares. The
 immediate-mode solids (`drawBox`, `drawSphere`, `drawCylinder`, `drawCone`,
-`drawPlane`, `drawIcoSphere`, each with an `At` form that takes a `Vec3`),
+`drawPlane`, `drawIcoSphere`, each with a `v` form that takes a `Vec3`),
 `drawAxis`, `drawGrid`, `drawArrow` and the lighting switches are free
 functions on `of`.
 
@@ -129,7 +129,7 @@ the arithmetic is a language operation, and no code calls C++ for it:
 const a: of.Vec2 = .{ 10, 20 };
 const b = a + @as(of.Vec2, @splat(5)); // { 15, 25 }
 const away = of.normalize(b - a) * @as(of.Vec2, @splat(80));
-of.drawCircleAt(a + away, 12);
+of.drawCirclev(a + away, 12);
 ```
 
 Components are `v[0]` and `v[1]`, not `v.x`. Zig has no operator overloading.

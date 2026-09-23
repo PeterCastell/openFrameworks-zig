@@ -155,7 +155,7 @@ const App = struct {
 
             of.pushMatrix();
             defer of.popMatrix();
-            of.translate(0, snake_radius, 0);
+            of.translatev(.{ 0, snake_radius, 0 });
             of.multMatrix(frame);
             // `lerp` is generic: this one blends two colors, and `setup`
             // puts a scalar and a vector through the same function.

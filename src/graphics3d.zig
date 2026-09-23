@@ -1,8 +1,8 @@
 //! of3dGraphics.h and of3dUtils.h: the immediate-mode 3D drawing calls.
 //!
 //! Each solid comes in two forms: at the origin of the current matrix
-//! (`drawBox(w, h, d)`), and at a point (`drawBoxAt(p, w, h, d)`). oF also
-//! spells every one as `x, y, [z,] ...` floats; those are the `At` form with
+//! (`drawBox(w, h, d)`), and at a point (`drawBoxv(p, w, h, d)`). oF also
+//! spells every one as `x, y, [z,] ...` floats; those are the `v` form with
 //! the vector unpacked, so they are not bound twice.
 //!
 //! Every solid is drawn with the resolution the matching `set*Resolution`
@@ -83,10 +83,10 @@ pub fn drawPlane(width: f32, height: f32) void {
     cpp.bind(ofDrawPlane_sig)(width, height);
 }
 /// `ofDrawPlane(const glm::vec3& center, width, height)`
-pub const ofDrawPlane_at_sig: Signature = .{ .name = "ofDrawPlane", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
-pub fn drawPlaneAt(center: Vec3, width: f32, height: f32) void {
+pub const ofDrawPlane_vec3_sig: Signature = .{ .name = "ofDrawPlane", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
+pub fn drawPlanev(center: Vec3, width: f32, height: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawPlane_at_sig)(&c, width, height);
+    cpp.bind(ofDrawPlane_vec3_sig)(&c, width, height);
 }
 
 // spheres
@@ -105,10 +105,10 @@ pub fn drawSphere(radius: f32) void {
     cpp.bind(ofDrawSphere_sig)(radius);
 }
 /// `ofDrawSphere(const glm::vec3& center, radius)`
-pub const ofDrawSphere_at_sig: Signature = .{ .name = "ofDrawSphere", .args = &.{ Ref(*const GlmVec3), f32 } };
-pub fn drawSphereAt(center: Vec3, radius: f32) void {
+pub const ofDrawSphere_vec3_sig: Signature = .{ .name = "ofDrawSphere", .args = &.{ Ref(*const GlmVec3), f32 } };
+pub fn drawSpherev(center: Vec3, radius: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawSphere_at_sig)(&c, radius);
+    cpp.bind(ofDrawSphere_vec3_sig)(&c, radius);
 }
 
 pub const ofSetIcoSphereResolution_sig: Signature = .{ .name = "ofSetIcoSphereResolution", .args = &.{i32} };
@@ -125,10 +125,10 @@ pub fn drawIcoSphere(radius: f32) void {
     cpp.bind(ofDrawIcoSphere_sig)(radius);
 }
 /// `ofDrawIcoSphere(const glm::vec3& center, radius)`
-pub const ofDrawIcoSphere_at_sig: Signature = .{ .name = "ofDrawIcoSphere", .args = &.{ Ref(*const GlmVec3), f32 } };
-pub fn drawIcoSphereAt(center: Vec3, radius: f32) void {
+pub const ofDrawIcoSphere_vec3_sig: Signature = .{ .name = "ofDrawIcoSphere", .args = &.{ Ref(*const GlmVec3), f32 } };
+pub fn drawIcoSpherev(center: Vec3, radius: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawIcoSphere_at_sig)(&c, radius);
+    cpp.bind(ofDrawIcoSphere_vec3_sig)(&c, radius);
 }
 
 // cylinders
@@ -149,10 +149,10 @@ pub fn drawCylinder(radius: f32, height: f32) void {
     cpp.bind(ofDrawCylinder_sig)(radius, height);
 }
 /// `ofDrawCylinder(const glm::vec3& center, radius, height)`
-pub const ofDrawCylinder_at_sig: Signature = .{ .name = "ofDrawCylinder", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
-pub fn drawCylinderAt(center: Vec3, radius: f32, height: f32) void {
+pub const ofDrawCylinder_vec3_sig: Signature = .{ .name = "ofDrawCylinder", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
+pub fn drawCylinderv(center: Vec3, radius: f32, height: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawCylinder_at_sig)(&c, radius, height);
+    cpp.bind(ofDrawCylinder_vec3_sig)(&c, radius, height);
 }
 
 // cones
@@ -173,10 +173,10 @@ pub fn drawCone(radius: f32, height: f32) void {
     cpp.bind(ofDrawCone_sig)(radius, height);
 }
 /// `ofDrawCone(const glm::vec3& center, radius, height)`
-pub const ofDrawCone_at_sig: Signature = .{ .name = "ofDrawCone", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
-pub fn drawConeAt(center: Vec3, radius: f32, height: f32) void {
+pub const ofDrawCone_vec3_sig: Signature = .{ .name = "ofDrawCone", .args = &.{ Ref(*const GlmVec3), f32, f32 } };
+pub fn drawConev(center: Vec3, radius: f32, height: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawCone_at_sig)(&c, radius, height);
+    cpp.bind(ofDrawCone_vec3_sig)(&c, radius, height);
 }
 
 // boxes
@@ -202,10 +202,10 @@ pub fn drawBox(width: f32, height: f32, depth: f32) void {
     cpp.bind(ofDrawBox_sig)(width, height, depth);
 }
 /// `ofDrawBox(const glm::vec3& center, width, height, depth)`
-pub const ofDrawBox_at_sig: Signature = .{ .name = "ofDrawBox", .args = &.{ Ref(*const GlmVec3), f32, f32, f32 } };
-pub fn drawBoxAt(center: Vec3, width: f32, height: f32, depth: f32) void {
+pub const ofDrawBox_vec3_sig: Signature = .{ .name = "ofDrawBox", .args = &.{ Ref(*const GlmVec3), f32, f32, f32 } };
+pub fn drawBoxv(center: Vec3, width: f32, height: f32, depth: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawBox_at_sig)(&c, width, height, depth);
+    cpp.bind(ofDrawBox_vec3_sig)(&c, width, height, depth);
 }
 /// `ofDrawBox(size)`: a cube centred on the origin.
 pub const ofDrawBox_cube_sig: Signature = .{ .name = "ofDrawBox", .args = &.{f32} };
@@ -213,8 +213,8 @@ pub fn drawCube(size: f32) void {
     cpp.bind(ofDrawBox_cube_sig)(size);
 }
 /// `ofDrawBox(const glm::vec3& center, size)`
-pub const ofDrawBox_cube_at_sig: Signature = .{ .name = "ofDrawBox", .args = &.{ Ref(*const GlmVec3), f32 } };
-pub fn drawCubeAt(center: Vec3, size: f32) void {
+pub const ofDrawBox_cube_vec3_sig: Signature = .{ .name = "ofDrawBox", .args = &.{ Ref(*const GlmVec3), f32 } };
+pub fn drawCubev(center: Vec3, size: f32) void {
     const c: GlmVec3 = .from(center);
-    cpp.bind(ofDrawBox_cube_at_sig)(&c, size);
+    cpp.bind(ofDrawBox_cube_vec3_sig)(&c, size);
 }

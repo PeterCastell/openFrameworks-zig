@@ -53,7 +53,7 @@ const App = struct {
         const t = of.getElapsedTime();
 
         // `Vec2` is `@Vector(2, f32)`, so the arithmetic below is Zig's own.
-        const mouse: of.Vec2 = .{ @floatFromInt(of.getMouseX()), @floatFromInt(of.getMouseY()) };
+        const mouse: of.Vec2 = @floatFromInt(of.getMousePos());
 
         // A box that changes shade while the mouse is over it.
         of.setColor(if (self.box.inside(mouse)) of.Color.rgb(255, 180, 40) else of.Color.rgb(90, 90, 120));
@@ -62,7 +62,7 @@ const App = struct {
         // A circle that follows the mouse and pulses.
         const r = 30 + 10 * @sin(t * 3);
         of.setColor(of.Color.rgba(80, 200, 255, 200));
-        of.drawCircleAt(mouse, r);
+        of.drawCirclev(mouse, r);
 
         // A leader from the box to the circle's edge: subtract, normalize,
         // scale, and hand the result straight to the wrapper, which is the
@@ -72,12 +72,12 @@ const App = struct {
         if (of.length(gap) > r) {
             of.setColor(of.Color.rgba(255, 255, 255, 90));
             of.setLineWidth(1);
-            of.drawLineBetween(from, mouse - of.normalize(gap) * @as(of.Vec2, @splat(r)));
+            of.drawLinev(from, mouse - of.normalize(gap) * @as(of.Vec2, @splat(r)));
         }
 
         // A spinning line around the circle.
         of.pushMatrix();
-        of.translate(mouse[0], mouse[1], 0);
+        of.translatev(.{ mouse[0], mouse[1], 0 });
         of.rotate(t * (std.math.pi / 2.0)); // a quarter turn a second
         of.setColor(of.Color.grey(255));
         of.setLineWidth(2);
@@ -112,7 +112,7 @@ const App = struct {
 
         const hint = "move the mouse, click the box, f for fullscreen, esc to quit";
         const hud = if (self.hud.isLoaded()) &self.hud else &self.font;
-        hud.drawStringi(hint, 20, @intFromFloat(base + line));
+        hud.drawStringv(hint, .{ 20, base + line });
 
         // The same face as outlines rather than as its texture atlas, which
         // is what `noFill` and `setLineWidth` reach.

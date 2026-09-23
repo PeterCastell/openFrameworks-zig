@@ -22,6 +22,9 @@ const Path = @import("string.zig").Path;
 const rectangle = @import("rectangle.zig");
 const Rectangle = rectangle.Rectangle;
 const OfRectangle = rectangle.OfRectangle;
+const math = @import("math.zig");
+const Vec2 = math.Vec2;
+const Vec2I = math.Vec2I;
 
 /// The three names a load resolves to an installed system font rather than
 /// to a file under `bin/data`. On Windows oF reads the font registry and
@@ -419,6 +422,12 @@ pub const Font = extern struct {
     pub fn getStringBoundingBoxi(self: *const Font, text: []const u8, x: i32, y: i32) Rectangle {
         return self.getStringBoundingBox(text, @floatFromInt(x), @floatFromInt(y));
     }
+    pub fn getStringBoundingBoxv(self: *const Font, text: []const u8, p: Vec2) Rectangle {
+        return self.getStringBoundingBox(text, p[0], p[1]);
+    }
+    pub fn getStringBoundingBoxvi(self: *const Font, text: []const u8, p: Vec2I) Rectangle {
+        return self.getStringBoundingBoxv(text, @floatFromInt(p));
+    }
 
     // drawing
 
@@ -432,6 +441,12 @@ pub const Font = extern struct {
     pub fn drawStringi(self: *const Font, text: []const u8, x: i32, y: i32) void {
         self.drawString(text, @floatFromInt(x), @floatFromInt(y));
     }
+    pub fn drawStringv(self: *const Font, text: []const u8, p: Vec2) void {
+        self.drawString(text, p[0], p[1]);
+    }
+    pub fn drawStringvi(self: *const Font, text: []const u8, p: Vec2I) void {
+        self.drawStringv(text, @floatFromInt(p));
+    }
 
     pub const drawStringAsShapes_sig: Signature = .{ .name = "drawStringAsShapes", .this = *const Font, .args = &.{ Ref(*const String), f32, f32 } };
     /// The same text as filled outlines rather than as the texture atlas,
@@ -444,5 +459,11 @@ pub const Font = extern struct {
     }
     pub fn drawStringAsShapesi(self: *const Font, text: []const u8, x: i32, y: i32) void {
         self.drawStringAsShapes(text, @floatFromInt(x), @floatFromInt(y));
+    }
+    pub fn drawStringAsShapesv(self: *const Font, text: []const u8, p: Vec2) void {
+        self.drawStringAsShapes(text, p[0], p[1]);
+    }
+    pub fn drawStringAsShapesvi(self: *const Font, text: []const u8, p: Vec2I) void {
+        self.drawStringAsShapesv(text, @floatFromInt(p));
     }
 };

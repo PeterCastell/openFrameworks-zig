@@ -88,7 +88,7 @@ pub const Rectangle = struct {
     /// the glue scan walks namespaces and C++ classes, and `Rectangle` is
     /// neither, so a `Signature` declared here would go unseen.
     pub fn draw(r: Rectangle) void {
-        graphics.drawRectangleAt(r.position, r.size[0], r.size[1]);
+        graphics.drawRectanglev(r.position, r.size[0], r.size[1]);
     }
 
     /// Runs the C++ constructor on `storage` and hands back the pointer a

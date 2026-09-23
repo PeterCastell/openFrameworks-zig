@@ -23,6 +23,9 @@ const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 const events = @import("events.zig");
 const String = @import("string.zig").String;
+const math = @import("math.zig");
+const Vec2I = math.Vec2I;
+const Vec2U = math.Vec2U;
 
 const KeyEventArgs = events.KeyEventArgs;
 const MouseEventArgs = events.MouseEventArgs;
@@ -112,9 +115,15 @@ pub const ofSetWindowShape_sig: Signature = .{ .name = "ofSetWindowShape", .args
 pub fn setWindowShape(w: u32, h: u32) void {
     cpp.bind(ofSetWindowShape_sig)(@bitCast(w), @bitCast(h));
 }
+pub fn setWindowShapev(size: Vec2U) void {
+    setWindowShape(size[0], size[1]);
+}
 pub const ofSetWindowPosition_sig: Signature = .{ .name = "ofSetWindowPosition", .args = &.{ i32, i32 } };
 pub fn setWindowPosition(x: i32, y: i32) void {
     cpp.bind(ofSetWindowPosition_sig)(x, y);
+}
+pub fn setWindowPositionv(p: Vec2I) void {
+    setWindowPosition(p[0], p[1]);
 }
 /// `ofSetWindowTitle` takes its `std::string` by value: the temporary is
 /// consumed by the call.
@@ -199,6 +208,10 @@ pub const ofGetMouseY_sig: Signature = .{ .name = "ofGetMouseY", .ret = i32 };
 pub fn getMouseY() i32 {
     return cpp.bind(ofGetMouseY_sig)();
 }
+/// Both mouse coordinates, as a vector.
+pub fn getMousePos() Vec2I {
+    return .{ getMouseX(), getMouseY() };
+}
 pub const ofGetPreviousMouseX_sig: Signature = .{ .name = "ofGetPreviousMouseX", .ret = i32 };
 pub fn getPreviousMouseX() i32 {
     return cpp.bind(ofGetPreviousMouseX_sig)();
@@ -206,6 +219,9 @@ pub fn getPreviousMouseX() i32 {
 pub const ofGetPreviousMouseY_sig: Signature = .{ .name = "ofGetPreviousMouseY", .ret = i32 };
 pub fn getPreviousMouseY() i32 {
     return cpp.bind(ofGetPreviousMouseY_sig)();
+}
+pub fn getPreviousMousePos() Vec2I {
+    return .{ getPreviousMouseX(), getPreviousMouseY() };
 }
 /// `button` is one of `of.mouse_button`, or -1 for any.
 pub const ofGetMousePressed_sig: Signature = .{ .name = "ofGetMousePressed", .args = &.{i32}, .ret = bool };
