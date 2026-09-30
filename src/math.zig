@@ -225,6 +225,62 @@ pub fn randomRangei(from: i32, to: i32) i32 {
     return @intCast(r);
 }
 
+/// A random point inside the circle of `radius` about the origin, uniform
+/// over its area. Draws from `ofRandom`, so `seedRandom` governs it.
+pub fn randomCircle(radius: f32) Vec2 {
+    return randomRing(0, radius);
+}
+
+/// A random point in the ring between the two radii about the origin,
+/// uniform over its area: the squared distance is what is uniform, since a
+/// uniform distance would crowd the inner edge. `randomRing(r, r)` is a point
+/// on the circle of radius `r`. Draws from `ofRandom`, so `seedRandom`
+/// governs it.
+pub fn randomRing(min_radius: f32, max_radius: f32) Vec2 {
+    const r = @sqrt(randomRange(min_radius * min_radius, max_radius * max_radius));
+    const angle = random(std.math.tau);
+    return .{ r * @cos(angle), r * @sin(angle) };
+}
+
+/// A random direction in the plane, of length `magnitude`: a point on the
+/// circle of that radius, uniform in angle.
+pub fn randomDir(magnitude: f32) Vec2 {
+    return randomRing(magnitude, magnitude);
+}
+
+/// A random direction in space, of length `magnitude`: a point on the
+/// sphere of that radius, uniform over its surface.
+pub fn randomDir3D(magnitude: f32) Vec3 {
+    return randomShell(magnitude, magnitude);
+}
+
+/// A random point inside the sphere of `radius` about the origin, uniform
+/// over its volume.
+pub fn randomSphere(radius: f32) Vec3 {
+    return randomShell(0, radius);
+}
+
+/// A random point in the shell between the two radii about the origin,
+/// uniform over its volume: the cubed distance is what is uniform. The
+/// direction is uniform over the sphere -- a uniform height and a uniform
+/// angle, which is Archimedes' hat-box theorem, not a uniform latitude,
+/// which would crowd the poles. `randomShell(r, r)` is a point on the sphere
+/// of radius `r`. Draws from `ofRandom`, so `seedRandom` governs it.
+pub fn randomShell(min_radius: f32, max_radius: f32) Vec3 {
+    const r = std.math.cbrt(randomRange(min_radius * min_radius * min_radius, max_radius * max_radius * max_radius));
+    const z = randomRange(-1, 1);
+    const ring = @sqrt(1 - z * z);
+    const angle = random(std.math.tau);
+    return Vec3{ ring * @cos(angle), ring * @sin(angle), z } * @as(Vec3, @splat(r));
+}
+
+/// `true` with probability `chance`, in `[0, 1]`: `randomBool(0.25)` is
+/// true a quarter of the time, `randomBool(0)` never and `randomBool(1)`
+/// always. Draws from `ofRandom`, so `seedRandom` governs it.
+pub fn randomBool(chance: f32) bool {
+    return random(1) < chance;
+}
+
 /// `ofSeedRandom(seed)`
 pub const ofSeedRandom_sig: Signature = .{ .name = "ofSeedRandom", .args = &.{i32} };
 pub fn seedRandom(seed: i32) void {
