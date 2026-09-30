@@ -30,6 +30,7 @@ pub const font = @import("font.zig");
 pub const graphics = @import("graphics.zig");
 pub const graphics3d = @import("graphics3d.zig");
 pub const light = @import("light.zig");
+pub const material = @import("material.zig");
 pub const math = @import("math.zig");
 pub const matrix = @import("matrix.zig");
 pub const mesh = @import("mesh.zig");
@@ -103,6 +104,8 @@ pub const BoundingBox = primitives.BoundingBox;
 pub const Mesh = mesh.Mesh;
 pub const Light = light.Light;
 pub const LightType = light.LightType;
+pub const Material = material.Material;
+pub const BaseMaterial = material.BaseMaterial;
 pub const GridOptions = graphics3d.GridOptions;
 
 // App, window, frames, input.

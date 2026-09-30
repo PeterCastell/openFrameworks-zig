@@ -145,6 +145,13 @@ pub const Mesh = extern struct {
     pub fn deinit(self: *Mesh) void {
         bind(dtor_sig)(self);
     }
+    /// `operator=`: replaces every array of `self`, which must already be
+    /// initialized, with a copy of `other`'s. `initCopy` is the same thing
+    /// for a mesh that is not yet constructed.
+    pub const assign_sig: Signature = .{ .name = ":=", .this = *Mesh, .args = &.{Ref(*const Mesh)}, .ret = Ref(*Mesh) };
+    pub fn copyFrom(self: *Mesh, other: *const Mesh) void {
+        _ = bind(assign_sig)(self, other);
+    }
 
     pub const setMode_sig: Signature = .{ .name = "setMode", .this = *Mesh, .args = &.{PrimitiveMode} };
     pub fn setMode(self: *Mesh, mode: PrimitiveMode) void {

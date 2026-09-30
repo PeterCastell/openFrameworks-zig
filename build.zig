@@ -77,6 +77,7 @@ pub fn build(b: *std.Build) void {
     // the 2D one, `3d.zig` the camera, primitives and light.
     addExample(b, of_mod, target, optimize, "example", "example/main.zig", "example", "run", "the 2D example app");
     addExample(b, of_mod, target, optimize, "example-3d", "example/3d.zig", "example-3d", "run-3d", "the 3D example app");
+    addExample(b, of_mod, target, optimize, "example-transforms", "example/transforms.zig", "example-transforms", "run-transforms", "the matrix and material example app");
 
     const glue_step = b.step("glue", "Write the generated C++ glue to zig-out/glue for inspection");
     glue_step.dependOn(&b.addInstallFile(glue, "glue/of_glue.cpp").step);

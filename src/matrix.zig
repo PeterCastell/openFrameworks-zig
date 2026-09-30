@@ -117,6 +117,31 @@ pub const Mat3 = extern struct {
         return fromCols(.{ x[0], y[0], z[0] }, .{ x[1], y[1], z[1] }, .{ x[2], y[2], z[2] });
     }
 
+    /// A rotation of `radians` about `axis`, right-handed; `axis` need not
+    /// be normalized. What `glm::rotate(mat4(1), angle, axis)` builds, as
+    /// its upper-left 3x3.
+    pub fn fromAxisAngle(radians: f32, axis: Vec3) Mat3 {
+        const a = math.normalize(axis);
+        const c = @cos(radians);
+        const s = @sin(radians);
+        const t = 1 - c;
+        return fromCols(
+            .{ t * a[0] * a[0] + c, t * a[0] * a[1] + s * a[2], t * a[0] * a[2] - s * a[1] },
+            .{ t * a[0] * a[1] - s * a[2], t * a[1] * a[1] + c, t * a[1] * a[2] + s * a[0] },
+            .{ t * a[0] * a[2] + s * a[1], t * a[1] * a[2] - s * a[0], t * a[2] * a[2] + c },
+        );
+    }
+
+    /// The columns of `m` each scaled by the matching component of `s`:
+    /// `m * S`, a scale applied before `m`.
+    pub fn scaled(m: Mat3, s: Vec3) Mat3 {
+        return fromCols(
+            m.col(0) * @as(Vec3, @splat(s[0])),
+            m.col(1) * @as(Vec3, @splat(s[1])),
+            m.col(2) * @as(Vec3, @splat(s[2])),
+        );
+    }
+
     /// Yaw/pitch/roll in radians — `.{ pitch, yaw, roll }` about X, Y, Z —
     /// composed `Ry(yaw) * Rx(pitch) * Rz(roll)`.
     pub fn fromEuler(r: Vec3) Mat3 {
@@ -245,6 +270,150 @@ pub const Mat4 = extern struct {
         const b = m.basis().inverse();
         return fromBasisOrigin(b, -b.transform(m.origin()));
     }
+
+    /// `b` as a 4x4 with no translation.
+    pub fn fromMat3(b: Mat3) Mat4 {
+        return fromBasisOrigin(b, @splat(0));
+    }
+
+    /// The rotation `q` as a 4x4.
+    pub fn fromQuat(q: Quat) Mat4 {
+        return fromMat3(q.toMat3());
+    }
+
+    // The elementary matrices, as glm spells them. Each has two forms: a
+    // static that builds the matrix on its own (`Mat4.translation(v)` is
+    // `glm::translate(glm::mat4(1), v)`) and a method that post-multiplies
+    // it onto an existing one (`m.translate(v)` is `glm::translate(m, v)`,
+    // which is `m * T`: the translation is applied first). So `T * R * S`
+    // is either `Mat4.translation(t).mul(.rotation(a, axis)).mul(.scaling(s))`
+    // or `Mat4.identity.translate(t).rotate(a, axis).scale(s)`.
+
+    pub fn translation(v: Vec3) Mat4 {
+        return fromBasisOrigin(.identity, v);
+    }
+
+    /// `radians` about `axis`, right-handed; `axis` need not be normalized.
+    pub fn rotation(radians: f32, axis: Vec3) Mat4 {
+        return fromMat3(.fromAxisAngle(radians, axis));
+    }
+
+    pub fn scaling(s: Vec3) Mat4 {
+        return fromCols(.{ s[0], 0, 0, 0 }, .{ 0, s[1], 0, 0 }, .{ 0, 0, s[2], 0 }, .{ 0, 0, 0, 1 });
+    }
+
+    /// `m * translation(v)`.
+    pub fn translate(m: Mat4, v: Vec3) Mat4 {
+        return m.mul(translation(v));
+    }
+
+    /// `m * rotation(radians, axis)`.
+    pub fn rotate(m: Mat4, radians: f32, axis: Vec3) Mat4 {
+        return m.mul(rotation(radians, axis));
+    }
+
+    /// `m * scaling(s)`.
+    pub fn scale(m: Mat4, s: Vec3) Mat4 {
+        return m.mul(scaling(s));
+    }
+
+    /// Transforms a position through a projective matrix: `w` is 1 going
+    /// in, and the result is divided by the `w` that comes out. For an
+    /// affine matrix that `w` is 1 and this is `transformPoint`.
+    pub fn projectPoint(m: Mat4, v: Vec3) Vec3 {
+        const r = m.transform(.{ v[0], v[1], v[2], 1 });
+        return Vec3{ r[0], r[1], r[2] } / @as(Vec3, @splat(r[3]));
+    }
+
+    pub fn determinant(m: Mat4) f32 {
+        return m.eliminate().det;
+    }
+
+    /// The general inverse, for a projection or anything else whose last
+    /// row is not `0 0 0 1`; `affineInverse` is cheaper when it is. A
+    /// singular matrix inverts to itself rather than to infinities.
+    pub fn inverse(m: Mat4) Mat4 {
+        const e = m.eliminate();
+        return if (e.det == 0) m else e.inv;
+    }
+
+    /// Gauss-Jordan with partial pivoting over the rows of `m`, which are
+    /// the columns of its transpose. Yields the inverse and, from the
+    /// pivots, the determinant.
+    fn eliminate(m: Mat4) struct { inv: Mat4, det: f32 } {
+        const t = m.transpose();
+        var a: [4]Vec4 = .{ t.col(0), t.col(1), t.col(2), t.col(3) };
+        var b: [4]Vec4 = .{ .{ 1, 0, 0, 0 }, .{ 0, 1, 0, 0 }, .{ 0, 0, 1, 0 }, .{ 0, 0, 0, 1 } };
+        var det: f32 = 1;
+        // `inline`: a vector index must be comptime-known, and `c` is one.
+        inline for (0..4) |c| {
+            var p: usize = c;
+            for (c + 1..4) |r| {
+                if (@abs(a[r][c]) > @abs(a[p][c])) p = r;
+            }
+            const pivot = a[p][c];
+            if (pivot == 0) return .{ .inv = m, .det = 0 };
+            if (p != c) {
+                std.mem.swap(Vec4, &a[p], &a[c]);
+                std.mem.swap(Vec4, &b[p], &b[c]);
+                det = -det;
+            }
+            det *= pivot;
+            const inv_pivot: Vec4 = @splat(1.0 / pivot);
+            a[c] *= inv_pivot;
+            b[c] *= inv_pivot;
+            for (0..4) |r| {
+                if (r == c) continue;
+                const f: Vec4 = @splat(a[r][c]);
+                a[r] -= a[c] * f;
+                b[r] -= b[c] * f;
+            }
+        }
+        // `b` holds the inverse's rows; transposing them in makes columns.
+        return .{ .inv = fromCols(b[0], b[1], b[2], b[3]).transpose(), .det = det };
+    }
+
+    // Projections and views, as glm builds them for OpenGL: right-handed,
+    // with clip depth in `[-1, 1]`. These are what `ofCamera` hands back
+    // from `getProjectionMatrix` and `getModelViewMatrix`.
+
+    /// `glm::perspective`: `fovy` is the vertical field of view in radians,
+    /// `aspect` is width over height, and the two planes are positive
+    /// distances in front of the eye.
+    pub fn perspective(fovy: f32, aspect: f32, near: f32, far: f32) Mat4 {
+        const f = 1.0 / @tan(fovy * 0.5);
+        return fromCols(
+            .{ f / aspect, 0, 0, 0 },
+            .{ 0, f, 0, 0 },
+            .{ 0, 0, -(far + near) / (far - near), -1 },
+            .{ 0, 0, -(2 * far * near) / (far - near), 0 },
+        );
+    }
+
+    /// `glm::ortho`
+    pub fn ortho(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) Mat4 {
+        return fromCols(
+            .{ 2 / (right - left), 0, 0, 0 },
+            .{ 0, 2 / (top - bottom), 0, 0 },
+            .{ 0, 0, -2 / (far - near), 0 },
+            .{ -(right + left) / (right - left), -(top + bottom) / (top - bottom), -(far + near) / (far - near), 1 },
+        );
+    }
+
+    /// `glm::lookAt`: the view matrix of an eye at `eye` looking at `center`
+    /// with `up` roughly upward. `up` need not be normalized or exactly
+    /// perpendicular to the view direction.
+    pub fn lookAt(eye: Vec3, center: Vec3, up: Vec3) Mat4 {
+        const f = math.normalize(center - eye);
+        const s = math.normalize(math.cross(f, up));
+        const u = math.cross(s, f);
+        return fromCols(
+            .{ s[0], u[0], -f[0], 0 },
+            .{ s[1], u[1], -f[1], 0 },
+            .{ s[2], u[2], -f[2], 0 },
+            .{ -math.dot(s, eye), -math.dot(u, eye), math.dot(f, eye), 1 },
+        );
+    }
 };
 
 /// `glm::quat`, stored `x, y, z, w` as glm lays it out.
@@ -323,6 +492,11 @@ pub const Quat = extern struct {
             .{ 2 * (xy - wz), 1 - 2 * (xx + zz), 2 * (yz + wx) },
             .{ 2 * (xz + wy), 2 * (yz - wx), 1 - 2 * (xx + yy) },
         );
+    }
+
+    /// The rotation as a 4x4 with no translation.
+    pub fn toMat4(q: Quat) Mat4 {
+        return .fromQuat(q);
     }
 
     /// Shepperd's method: pick the largest diagonal term so the divisor is

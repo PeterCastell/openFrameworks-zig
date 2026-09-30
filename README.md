@@ -73,7 +73,9 @@ pub fn main() u8 {
 `setup`, `update`, `draw`, `exit`, and the key, mouse, touch, resize, drag and
 message handlers. `of.run` then starts the oF main loop. See
 [example/main.zig](example/main.zig) for the 2D calls and
-[example/3d.zig](example/3d.zig) for a camera, a primitive and a light.
+[example/3d.zig](example/3d.zig) for a camera, a primitive and a light, and
+[example/transforms.zig](example/transforms.zig) for matrices built by hand,
+a mesh transformed vertex by vertex, and a material.
 
 ## 3D
 
@@ -119,6 +121,28 @@ mesh.draw();
 The slices are of `GlmVec3`, not `Vec3`: a `Vec3` is 16 bytes and a
 `glm::vec3` is 12, so an array of one is not an array of the other. A
 primitive's `getMesh()` returns the mesh it draws, for editing in place.
+`copyFrom` is `operator=`, for refilling a mesh from another; `initCopy` is
+the copy constructor, for one not yet constructed.
+
+`of.Material` is `ofMaterial`: the diffuse, ambient, specular and emissive
+reflectance and the shininess that a light shades a mesh with. Between
+`begin` and `end` it replaces the current color:
+
+```zig
+var material: of.Material = undefined;   // a field of the app struct
+material.init();                         // in setup; deinit in exit
+material.setDiffuseColor(of.FloatColor.steelBlue);
+material.setShininess(120);
+
+material.begin();                        // in draw, with lighting on
+mesh.draw();
+material.end();
+```
+
+Its colors are `FloatColor`s, as a light's are. Every one of oF's named
+colors (`wheat`, `steelBlue`, `indianRed` and the rest of `ofColor.h`) is a
+constant on `of.Color`, `of.FloatColor` and `of.ShortColor`, with oF's own
+values; `.from(of.Color.wheat)` converts between the three.
 
 ## Vectors
 
@@ -254,6 +278,22 @@ A test compared every value above against glm. A probe that compiles with the
 real headers prints the quaternions, matrices, products and inverses of glm. The
 Zig code reproduces all 91 values to four decimal places.
 
+`Mat4` also builds the elementary matrices the way glm does. `Mat4.translation(v)`,
+`Mat4.rotation(radians, axis)` and `Mat4.scaling(s)` each build one on their own,
+and `m.translate(v)`, `m.rotate(radians, axis)` and `m.scale(s)` post-multiply one
+onto `m`, as `glm::translate(m, v)` does. So `T * R * S` is either
+`Mat4.translation(t).mul(.rotation(a, axis)).mul(.scaling(s))` or
+`Mat4.identity.translate(t).rotate(a, axis).scale(s)`. `transformPoint` applies a
+matrix to a position (`w` = 1), `transformDir` to a direction (`w` = 0), and
+`projectPoint` divides by the `w` that comes out, for a projection.
+
+`inverse` and `determinant` are general; `affineInverse` is the cheaper one for
+a matrix whose last row is `0 0 0 1`. `perspective`, `ortho` and `lookAt` are
+glm's, right-handed with clip depth in `[-1, 1]`, and reproduce what
+`ofCamera` returns from `getProjectionMatrix` and `getModelViewMatrix`.
+`Mat3.fromAxisAngle`, `Mat4.fromMat3`, `Mat4.fromQuat` and `Quat.toMat4` convert
+between the three.
+
 These types bind the matrix functions of `ofGraphics.h`: `ofLoadMatrix`,
 `ofMultMatrix`, `ofLoadViewMatrix`, `ofMultViewMatrix`, `ofLoadIdentityMatrix`,
 `ofSetMatrixMode`, and the four `ofGetCurrent*Matrix` queries.
@@ -321,6 +361,8 @@ the methods of those types, and its free functions:
 | `font.zig` | `ofTrueTypeFont`: loading a face, measuring a string, drawing one. Also `ofTrueTypeFontSettings` and the `ofUnicode` ranges. |
 | `color.zig`, `math.zig`, `rectangle.zig`, `string.zig` | `Color`, `glm::vec*` (float, `int`, `unsigned`) and `ofMath.h`, `ofRectangle`, and the `std::string`, `std::wstring` and `std::filesystem::path` that oF calls take. |
 | `matrix.zig` | `glm::mat3`, `glm::mat4`, `glm::quat`, and the `Transform` that composes them. |
+| `node.zig`, `camera.zig`, `primitives.zig`, `mesh.zig`, `light.zig`, `graphics3d.zig` | `ofNode`, `ofCamera` and `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`, `ofLight` and the lighting switches, and the immediate-mode solids of `of3dGraphics.h`. |
+| `material.zig` | `ofMaterial`: the Phong colors and shininess, the PBR scalars, and the custom uniforms. |
 | `events.zig` | The event-argument types and the key, modifier and mouse-button constants. |
 | `of.zig` | Re-exports everything flat, and is the root the glue scan starts from. |
 
@@ -403,7 +445,7 @@ that the bindings describe are also release layouts.
 - **Coverage.** The app lifecycle and events, the 2D drawing calls in
   `ofGraphics.h`, the 3D ones in `of3dGraphics.h` and `of3dUtils.h`, `ofNode`,
   `ofCamera`, `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`,
-  `ofLight`, TrueType text, colors, `ofRectangle`, the math helpers, and
+  `ofLight`, `ofMaterial`, TrueType text, colors, `ofRectangle`, the math helpers, and
   `std::string`. The sound, video, image, texture and shader classes are not
   bound. To add any other oF function, write one `Signature`. The glue
   reports an error if that signature is incorrect.
