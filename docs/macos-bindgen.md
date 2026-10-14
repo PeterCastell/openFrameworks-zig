@@ -1,6 +1,34 @@
 # macOS support in cpp-bindgen
 
-**Status:** proposed. Nothing here is implemented yet.
+**Status:** implemented in cpp-bindgen 6de46a0, which openFrameworks-zig now
+pins. Every item landed. Three differ from what is proposed below:
+
+- **libc++ ABI tags (item 2).** The bindings never name libc++'s tag. The
+  glue defines `_LIBCPP_NO_ABI_TAG` before any include, so the members it
+  forces get plain names, and a `static_assert` fails if a libc++ ignores the
+  define. `Signature.abi_tags` exists, but for a library's own tags.
+- **Names libc++ keeps directly in `std` (item 1).** `std::exception`,
+  `std::type_info`, `std::byte` and the others in `abi.libcxx.unversioned`
+  are mangled without `__1`. The glue writes out each spelling the mangler
+  chose, so a wrong namespace fails to compile instead of failing to link.
+- **The x8 entry thunk (item 5).** It shifts by two registers with a padding
+  parameter, not by one. AAPCS64 rule C.9 starts a 16-byte-aligned argument
+  in an even register, and a shift by one would break that. Both directions
+  allow 6 general registers.
+
+The suite now passes natively, under `test-msvc`, and as a build-and-link
+check for `aarch64-macos` and `x86_64-macos` on Windows. CI runs it on Apple
+Silicon, natively and under Rosetta. With the new pin, every binding in
+openFrameworks-zig gets through Zig analysis for both macOS targets except
+`WString.init`, which is Windows-only; see "Not cpp-bindgen's job".
+
+The openFrameworks-zig side has followed. It has a macOS branch in
+`build.zig`, per-ABI layouts in the bindings, per-ABI vtable expectations in
+`test/vtables.zig`, and a macOS CI job. Every binding's size, field offsets
+and vtable slots match clang's dumps for oF 0.12.1 on both `aarch64-macos`
+and `x86_64-macos`. The two Mac targets differ: on x86_64, libc++ aligns a
+`std::function` to 16 bytes, so `ofNode` and `ofEasyCam` grow. None of this
+has run on a Mac yet. The CI job is the first place it will.
 
 A feature request, written from the openFrameworks side. The goal: a Mac user
 clones this repo, points `-Dof-root` at their own `of_v0.12.x_osx_release`,

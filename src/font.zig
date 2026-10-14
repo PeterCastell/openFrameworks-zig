@@ -15,6 +15,9 @@
 //! Either way the load builds a texture atlas, so it needs the window: call
 //! it from `setup`, not before `run`.
 const cpp = @import("cpp_bindgen");
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
+/// the opaque storage sizes below differ between them.
+const msvc = @import("builtin").target.abi == .msvc;
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const String = @import("string.zig").String;
@@ -302,7 +305,7 @@ pub const Settings = extern struct {
 /// live -- a field of the app struct is the usual place -- and pass it on by
 /// pointer.
 pub const Font = extern struct {
-    _storage: [728]u8 align(8),
+    _storage: [if (msvc) 728 else 696]u8 align(8),
 
     pub const cpp_name = "ofTrueTypeFont";
     pub const cpp_kind: cpp.Kind = .class;

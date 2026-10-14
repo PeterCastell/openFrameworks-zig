@@ -19,10 +19,12 @@
 //! loop, where an error has nowhere to propagate to, so a returned error
 //! dumps its error return trace and panics at the throw site.
 const std = @import("std");
+const builtin = @import("builtin");
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 const events = @import("events.zig");
 const String = @import("string.zig").String;
+const Path = @import("string.zig").Path;
 const math = @import("math.zig");
 const Vec2I = math.Vec2I;
 const Vec2U = math.Vec2U;
@@ -218,11 +220,37 @@ pub const RunOptions = struct {
 pub const ofSetupOpenGL_sig: Signature = .{ .name = "ofSetupOpenGL", .args = &.{ i32, i32, WindowMode } };
 pub const ofRunApp_sig: Signature = .{ .name = "ofRunApp", .args = &.{*BaseApp}, .ret = i32 };
 pub fn run(comptime T: type, app: *T, opts: RunOptions) i32 {
+    if (builtin.os.tag == .macos) useDataBesideExe();
     cpp.bind(ofSetupOpenGL_sig)(@bitCast(opts.width), @bitCast(opts.height), opts.mode);
     const S = AppBase(T);
     S.instance = .{ .cpp = undefined, .app = app };
     S.instance.cpp.init();
     return cpp.bind(ofRunApp_sig)(&S.instance.cpp.base);
+}
+
+/// `ofFilePath`, a namespace of static functions in a class.
+pub const FilePath = opaque {
+    pub const cpp_name = "ofFilePath";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+pub const getCurrentExeDir_sig: Signature = .{ .name = "getCurrentExeDir", .class = FilePath, .ret = String };
+pub const ofSetDataPathRoot_sig: Signature = .{ .name = "ofSetDataPathRoot", .args = &.{cpp.Ref(*const Path)} };
+
+/// On macOS, oF looks for `data/` three levels above the executable, which
+/// is beside the bundle when the executable is `<app>.app/Contents/MacOS/<app>`.
+/// A Zig build makes a bare executable, so point oF at `data/` next to it,
+/// which is where it looks on Windows. A sketch's own `ofSetDataPathRoot` in
+/// `setup` still wins, since this runs first.
+fn useDataBesideExe() void {
+    var dir = cpp.bind(getCurrentExeDir_sig)();
+    defer dir.deinit();
+    const exe_dir = dir.slice();
+    const sep = if (std.mem.endsWith(u8, exe_dir, "/")) "" else "/";
+    var buf: [Path.max_units]u8 = undefined;
+    const root = std.fmt.bufPrint(&buf, "{s}{s}data/", .{ exe_dir, sep }) catch return;
+    var path = Path.init(root) orelse return;
+    defer path.deinit();
+    cpp.bind(ofSetDataPathRoot_sig)(&path);
 }
 
 /// `ofExit(0)`: ends the main loop after the current frame.

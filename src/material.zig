@@ -25,6 +25,9 @@
 //! only as opaque handles, because the material's virtual functions take
 //! them, and every virtual function is listed.
 const cpp = @import("cpp_bindgen");
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
+/// the opaque storage sizes below differ between them.
+const msvc = @import("builtin").target.abi == .msvc;
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const math = @import("math.zig");
@@ -88,7 +91,10 @@ pub const SharedShader = extern struct {
 /// C++ one must.
 pub const BaseMaterial = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
-    _storage: [8]u8 align(8),
+    // The `bound` flag. MSVC pads it out to the class's alignment; Itanium
+    // leaves that padding to a derived class, and `ofMaterial` packs its
+    // own members there, so the base must end right after the flag.
+    _storage: [if (msvc) 8 else 1]u8 align(8),
 
     pub const cpp_name = "ofBaseMaterial";
     pub const cpp_kind: cpp.Kind = .class;
@@ -156,7 +162,7 @@ pub const BaseMaterial = extern struct {
 /// live rather than copying it.
 pub const Material = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
-    _storage: [1600]u8 align(8),
+    _storage: [if (msvc) 1600 else 1096]u8 align(8),
 
     pub const cpp_name = "ofMaterial";
     pub const cpp_kind: cpp.Kind = .class;

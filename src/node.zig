@@ -43,6 +43,13 @@
 //! `Transform` uses, so they are not bound; `setTransform` goes through the
 //! quaternion, where neither question arises.
 const cpp = @import("cpp_bindgen");
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
+/// the opaque storage sizes below differ between them.
+const msvc = @import("builtin").target.abi == .msvc;
+/// libc++ aligns a `std::function`'s buffer to `max_align_t`, which is 16
+/// bytes on x86_64 and 8 on arm64, and each `ofParameter` in a node holds
+/// one: on an Intel Mac the node classes are larger and 16-byte aligned.
+const libcxx_x86_64 = !msvc and @import("builtin").cpu.arch == .x86_64;
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const math = @import("math.zig");
@@ -80,7 +87,7 @@ pub const BaseRenderer = opaque {
 /// ```
 pub const Node = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
-    _storage: [392]u8 align(8),
+    _storage: [if (msvc) 392 else if (libcxx_x86_64) 368 else 304]u8 align(if (libcxx_x86_64) 16 else 8),
 
     pub const cpp_name = "ofNode";
     pub const cpp_kind: cpp.Kind = .class;

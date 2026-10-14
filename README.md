@@ -5,22 +5,27 @@ the C++ symbol through [cpp-bindgen](https://github.com/PeterCastell/cpp-bindgen
 
 This package controls the compilation of oF, but it does not contain the oF
 source. Point the package at an oF 0.12 release. The package then compiles the
-oF core with the Zig toolchain for the MSVC ABI. It links the prebuilt
-third-party libraries of oF. It also checks every binding against the headers
-that you supply.
+oF core with the Zig toolchain for that platform's C++ ABI. It links the
+prebuilt third-party libraries of oF. It also checks every binding against the
+headers that you supply.
 
 ## Requirements
 
 - Zig 0.17.0-dev.1683 or later.
-- Visual Studio 2022 with the C++ workload and a Windows 10/11 SDK. Zig uses
-  the headers and the import libraries of these tools. Zig does not run
-  `cl.exe`.
-- An oF release in the `of_v0.12.x_vs_64_release` layout. Development used
-  version 0.12.1.
+- One of these two platforms, each with the oF release made for it.
+  Development used oF 0.12.1.
 
-This package supports only `x86_64-windows-msvc`. This limit is deliberate. The
-bindings describe MSVC STL layouts and MSVC-mangled names. Also, the
-third-party libraries that oF supplies for Windows are Visual Studio builds.
+| Platform | Target | oF release | Also needs |
+|---|---|---|---|
+| Windows | `x86_64-windows-msvc` | `of_v0.12.x_vs_64_release` | Visual Studio 2022 with the C++ workload and a Windows 10/11 SDK. Zig uses their headers and import libraries; it does not run `cl.exe`. |
+| macOS | `aarch64-macos` or `x86_64-macos` | `of_v0.12.x_osx_release` | The Xcode command line tools, for the macOS SDK. |
+
+The default target is the right one for the machine: the MSVC ABI on Windows,
+the native target on a Mac. The two platforms differ in their C++ ABI (MSVC or
+Itanium) and their standard library (the MSVC STL or libc++), and the bindings
+spell the layouts of both. The release matters too: the third-party libraries
+that oF supplies are built for one platform, so a vs_64 release does not work
+on a Mac or an osx release on Windows. Other targets are refused.
 
 ## Use from a project
 
@@ -33,11 +38,12 @@ zig fetch --save git+https://github.com/PeterCastell/openFrameworks-zig.git
 const of_dep = b.dependency("openframeworks_zig", .{
     .target = target,
     .optimize = optimize,
-    .@"of-root" = @as([]const u8, "C:/path/to/of_v0.12.1_vs_64_release"),
+    .@"of-root" = @as([]const u8, "C:/path/to/of_v0.12.1_vs_64_release"), // or the osx release on a Mac
 });
 exe_mod.addImport("of", of_dep.module("of"));
 
-// Every oF build on Windows uses the dynamic CRT. The executable must do the same.
+// Every oF build on Windows uses the dynamic CRT, and on macOS everything links
+// dynamically. The executable must do the same.
 const exe = b.addExecutable(.{ .name = "app", .root_module = exe_mod, .linkage = .dynamic });
 ```
 
@@ -374,6 +380,16 @@ address you take does not move, so the temporary is valid for the call.
 zig build run -Dof-root=C:/path/to/of_v0.12.1_vs_64_release
 ```
 
+On a Mac, the same with the osx release:
+
+```bash
+zig build run -Dof-root=/path/to/of_v0.12.1_osx_release
+```
+
+An Intel build also runs on Apple Silicon, under Rosetta:
+`zig build test -Dtarget=x86_64-macos -frosetta`. CI runs the tests both ways,
+and builds the examples, on every push (`.github/workflows/ci.yml`).
+
 `zig build test` checks the bindings against the oF build: the vtable layouts
 they claim, and a Zig subclass of `ofBaseApp`. It needs `-Dof-root` too, but no
 window.
@@ -442,8 +458,11 @@ pub const Camera = extern struct {
 };
 ```
 
-`_storage` is the size of the class minus the size of its base, which is
-where MSVC puts a derived class's own members. cpp-bindgen computes the base's
+`_storage` is the size of the class minus the space its base takes. On MSVC
+that is the base's whole size. On Itanium it is only the base's data, since a
+derived class packs its own members into the base's tail padding. The two
+ABIs' standard libraries differ in size too, so a `_storage` size is written
+once for each (`if (msvc) ... else ...`). cpp-bindgen computes the base's
 offset, `basePtr` is the checked upcast, and the glue asserts that the base is
 one and that the whole class has the declared size. A method that the base
 declares is bound once, on the base; a derived type reaches it through the
@@ -478,9 +497,18 @@ The build compiles two pieces of C++ into the library, in addition to oF:
   time an app starts.
 
 The build always compiles oF in its Release configuration, whatever the Zig
-optimize mode. That configuration is `NDEBUG`, `_ITERATOR_DEBUG_LEVEL=0` and the
-dynamic CRT. The prebuilt libraries are release builds. The MSVC STL layouts
-that the bindings describe are also release layouts.
+optimize mode. On Windows that configuration is `NDEBUG`,
+`_ITERATOR_DEBUG_LEVEL=0` and the dynamic CRT. The prebuilt libraries are
+release builds. The MSVC STL layouts that the bindings describe are also
+release layouts.
+
+On macOS the build follows oF's makefile (`config.osx.default.mk`). The core
+compiles as Objective-C++ with ARC, plus the AVFoundation video and sound
+players. The executable links every `libs/*/lib/osx/*.a` in the release and
+oF's list of frameworks. oF expects a Mac app to be a bundle, and looks for
+`data/` three directories above the executable. A Zig build makes a bare
+executable, so `run` points oF at the `data/` directory beside it instead.
+That is where oF looks on Windows.
 
 ## Known limits
 
@@ -492,7 +520,8 @@ that the bindings describe are also release layouts.
   bound. To add any other oF function, write one `Signature`. The glue
   reports an error if that signature is incorrect.
 - **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name
-  longer than 512 UTF-16 code units does not load. See `string.Path`.
+  longer than 512 UTF-16 code units (Windows) or 512 bytes (macOS) does not
+  load. See `string.Path`.
 
 ## Adding a binding
 

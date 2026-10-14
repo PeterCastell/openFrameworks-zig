@@ -23,6 +23,13 @@
 //! degrees and the wrapper converts.
 const std = @import("std");
 const cpp = @import("cpp_bindgen");
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
+/// the opaque storage sizes below differ between them.
+const msvc = @import("builtin").target.abi == .msvc;
+/// libc++ aligns a `std::function`'s buffer to `max_align_t`, which is 16
+/// bytes on x86_64 and 8 on arm64, and each `ofParameter` in a node holds
+/// one: on an Intel Mac the node classes are larger and 16-byte aligned.
+const libcxx_x86_64 = !msvc and @import("builtin").cpu.arch == .x86_64;
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const math = @import("math.zig");
@@ -300,7 +307,7 @@ pub const Camera = extern struct {
 /// camera cannot move once constructed and is destroyed in `exit`.
 pub const EasyCam = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
-    _storage: [784]u8 align(8),
+    _storage: [if (msvc) 784 else if (libcxx_x86_64) 784 else 704]u8 align(8),
 
     pub const cpp_name = "ofEasyCam";
     pub const cpp_kind: cpp.Kind = .class;

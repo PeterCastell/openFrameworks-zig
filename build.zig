@@ -1,33 +1,48 @@
 //! openFrameworks bindings for Zig, built on cpp-bindgen.
 //!
 //! This package owns the compilation of the openFrameworks core, but not the
-//! source: point it at an existing 0.12 release (the `of_v0.12.x_vs_64_release`
-//! layout) with `-Dof-root=<path>` or the `OF_ROOT` environment variable.
+//! source: point it at an existing 0.12 release with `-Dof-root=<path>` or the
+//! `OF_ROOT` environment variable. Two platforms are supported, each against
+//! its own release:
+//!
+//! - Windows, x86_64, MSVC ABI: `of_v0.12.x_vs_64_release`. It is the default
+//!   target on a Windows host.
+//! - macOS, aarch64 or x86_64: `of_v0.12.x_osx_release`. It is the default
+//!   target on a Mac, which builds natively.
 //!
 //! It exports two things:
 //!
 //! - module `of`: the Zig side, built on cpp-bindgen.
 //! - artifact `openFrameworks`: a static library holding the oF core compiled
-//!   for the MSVC ABI, the C++ glue cpp-bindgen generates for the bindings,
-//!   and the link lines for every third-party and system library oF needs.
-//!   There is no hand-written C++: an app is a Zig subclass of `ofBaseApp`.
+//!   for the platform's C++ ABI, the C++ glue cpp-bindgen generates for the
+//!   bindings, and the link lines for every third-party and system library oF
+//!   needs. There is no hand-written C++: an app is a Zig subclass of
+//!   `ofBaseApp`.
 //!
 //! An end project does this:
 //!
 //! ```zig
 //! const of_dep = b.dependency("openframeworks_zig", .{ .target = target, .optimize = optimize, .@"of-root" = of_root });
 //! exe_mod.addImport("of", of_dep.module("of")); // the module carries the library and its link line
-//! // and the executable must use the dynamic CRT, like every oF build on Windows:
+//! // and the executable must link dynamically: on Windows that is the dynamic
+//! // CRT, like every oF build there; on macOS it is the only kind there is.
 //! const exe = b.addExecutable(.{ .name = "app", .root_module = exe_mod, .linkage = .dynamic });
 //! ```
 const std = @import("std");
+const builtin = @import("builtin");
 const cpp_bindgen = @import("cpp_bindgen");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{ .default_target = .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .msvc } });
+    // On a Windows host, the MSVC ABI that oF's Visual Studio libraries use;
+    // anywhere else, the machine itself.
+    const default_target: std.Target.Query = if (builtin.os.tag == .windows)
+        .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .msvc }
+    else
+        .{};
+    const target = b.standardTargetOptions(.{ .default_target = default_target });
     const optimize = b.standardOptimizeOption(.{});
 
-    const of_root = b.option([]const u8, "of-root", "Path to an openFrameworks 0.12 release (vs_64 layout). Defaults to $OF_ROOT.") orelse
+    const of_root = b.option([]const u8, "of-root", "Path to an openFrameworks 0.12 release (vs_64 or osx layout). Defaults to $OF_ROOT.") orelse
         b.graph.environ_map.get("OF_ROOT") orelse
         "";
     const winrt_include = b.option([]const u8, "winrt-include", "Windows SDK 'winrt' include directory (auto-detected when omitted)");
@@ -66,7 +81,7 @@ pub fn build(b: *std.Build) void {
     });
 
     if (of_root.len == 0) {
-        lib.step.dependOn(&b.addFail("openframeworks_zig: pass -Dof-root=<path to of_v0.12.x_vs_64_release> or set OF_ROOT").step);
+        lib.step.dependOn(&b.addFail("openframeworks_zig: pass -Dof-root=<path to of_v0.12.x_vs_64_release or of_v0.12.x_osx_release> or set OF_ROOT").step);
     } else {
         configureOf(b, of_mod, lib_mod, target, of_root, winrt_include, glue);
     }
@@ -126,8 +141,19 @@ fn addExample(
     b.step(run_step, b.fmt("Run {s}", .{what})).dependOn(&run.step);
 }
 
-/// The compile and link lines of oF's own `openframeworksLib.vcxproj` and
-/// `openFrameworksRelease.props`, reproduced for the zig toolchain.
+/// The platforms there is an oF release for and a link line here.
+const Platform = enum {
+    windows,
+    macos,
+
+    fn of(t: std.Target) ?Platform {
+        if (t.os.tag == .windows and t.abi == .msvc and t.cpu.arch == .x86_64) return .windows;
+        if (t.os.tag == .macos and (t.cpu.arch == .aarch64 or t.cpu.arch == .x86_64)) return .macos;
+        return null;
+    }
+};
+
+/// Everything the oF compile needs from one platform's release.
 fn configureOf(
     b: *std.Build,
     of_mod: *std.Build.Module,
@@ -137,13 +163,41 @@ fn configureOf(
     winrt_include: ?[]const u8,
     glue: std.Build.LazyPath,
 ) void {
-    if (target.result.abi != .msvc) {
-        lib_mod.owner.getInstallStep().dependOn(&b.addFail("openframeworks_zig: only the x86_64-windows-msvc target is supported (it links oF's Visual Studio prebuilt libraries)").step);
-    }
+    const platform = Platform.of(target.result) orelse {
+        lib_mod.owner.getInstallStep().dependOn(&b.addFail("openframeworks_zig: the supported targets are x86_64-windows-msvc (oF's vs_64 release) and aarch64-macos or x86_64-macos (oF's osx release)").step);
+        return;
+    };
 
     const of: std.Build.LazyPath = .{ .cwd_relative = of_root };
     const libs = of.path(b, "libs");
+    for (include_dirs) |d| lib_mod.addIncludePath(libs.path(b, d));
 
+    const cxx_flags = switch (platform) {
+        .windows => configureWindows(b, of_mod, lib_mod, libs, winrt_include),
+        .macos => configureMacos(b, of_mod, lib_mod, libs, of_root),
+    };
+
+    // The glue cpp-bindgen generated from the bindings: it instantiates every
+    // header-only entity the bindings name and static_asserts every layout
+    // fact they claim, against the real headers. Compiling it here gives it
+    // the include paths added above and the same flags as the rest of the oF
+    // build: the facts it checks are only the facts that will be linked if it
+    // sees the same declarations. The glue needs no flags of its own -- it
+    // carries what it needs in its own source. It is C++ on every platform:
+    // what the core's Objective-C++ adds on macOS is in no class it binds.
+    lib_mod.addCSourceFile(.{ .file = glue, .flags = cxx_flags, .language = .cpp });
+}
+
+/// The compile and link lines of oF's own `openframeworksLib.vcxproj` and
+/// `openFrameworksRelease.props`, reproduced for the zig toolchain. Returns
+/// the C++ flags, for the glue.
+fn configureWindows(
+    b: *std.Build,
+    of_mod: *std.Build.Module,
+    lib_mod: *std.Build.Module,
+    libs: std.Build.LazyPath,
+    winrt_include: ?[]const u8,
+) []const []const u8 {
     // Always the Release configuration of oF, whatever the Zig optimize mode:
     // the prebuilt third-party libraries and the dynamic CRT are release
     // builds, and the MSVC STL changes its container layouts in debug mode.
@@ -161,27 +215,15 @@ fn configureOf(
         "-Wno-everything",
     };
 
-    for (include_dirs) |d| lib_mod.addIncludePath(libs.path(b, d));
     if (winrt_include orelse findWinrtInclude(b)) |dir| {
         lib_mod.addIncludePath(.{ .cwd_relative = dir });
     } else {
         lib_mod.owner.getInstallStep().dependOn(&b.addFail("openframeworks_zig: could not find the Windows SDK 'winrt' include directory; pass -Dwinrt-include=<...\\Windows Kits\\10\\Include\\<version>\\winrt>").step);
     }
 
-    lib_mod.addCSourceFiles(.{
-        .root = libs.path(b, "openFrameworks"),
-        .files = core_sources,
-        .flags = cxx_flags,
-    });
-
-    // The glue cpp-bindgen generated from the bindings: it instantiates every
-    // header-only entity the bindings name and static_asserts every layout
-    // fact they claim, against the real headers. Compiling it here gives it
-    // the include paths added above and the same flags as the rest of the oF
-    // build: the facts it checks are only the facts that will be linked if it
-    // sees the same declarations. The glue needs no flags of its own -- it
-    // carries what it needs in its own source.
-    lib_mod.addCSourceFile(.{ .file = glue, .flags = cxx_flags });
+    const root = libs.path(b, "openFrameworks");
+    lib_mod.addCSourceFiles(.{ .root = root, .files = core_sources, .flags = cxx_flags });
+    lib_mod.addCSourceFiles(.{ .root = root, .files = windows_sources, .flags = cxx_flags });
 
     // Link inputs go on the `of` module, not on the static library's own
     // module: a static library's library paths do not reach the executable
@@ -192,9 +234,92 @@ fn configureOf(
         of_mod.linkSystemLibrary(l.file, .{ .preferred_link_mode = .static });
     }
     for (system_libs) |name| of_mod.linkSystemLibrary(name, .{});
+    return cxx_flags;
 }
 
-/// `libs/<...>` include directories, from openFrameworksRelease.props.
+/// The compile and link lines of oF's `config.osx.default.mk`, the makefile
+/// build of the osx release, reproduced for the zig toolchain. Returns the
+/// C++ flags, for the glue.
+///
+/// The makefile compiles the whole core as Objective-C++ with ARC, and so does
+/// this: `ofAppGLFWWindow.cpp` talks to Cocoa directly. It links the
+/// release's static libraries by finding them, every `libs/*/lib/osx/*.a`,
+/// and so does this too, since their names (`glfw3.a`, `freeimage.a`) are not
+/// ones `linkSystemLibrary` would look for.
+fn configureMacos(
+    b: *std.Build,
+    of_mod: *std.Build.Module,
+    lib_mod: *std.Build.Module,
+    libs: std.Build.LazyPath,
+    of_root: []const u8,
+) []const []const u8 {
+    const cxx_flags: []const []const u8 = &.{
+        "-std=c++20",                 "-DNDEBUG",
+        "-DOF_NO_FMOD",               "-DGLM_FORCE_CTOR_INIT",
+        "-DGLM_ENABLE_EXPERIMENTAL",  "-DGL_SILENCE_DEPRECATION",
+        "-DGLES_SILENCE_DEPRECATION", "-DCOREVIDEO_SILENCE_GL_DEPRECATION",
+        "-Wno-everything",
+    };
+    const objc_flags: []const []const u8 = cxx_flags ++ &[_][]const u8{"-fobjc-arc"};
+    const c_objc_flags: []const []const u8 = &.{
+        "-DNDEBUG",                 "-DOF_NO_FMOD",
+        "-DGL_SILENCE_DEPRECATION", "-DCOREVIDEO_SILENCE_GL_DEPRECATION",
+        "-fobjc-arc",               "-Wno-everything",
+    };
+
+    // libc++ is not part of the C runtime on macOS, as the MSVC STL is on
+    // Windows: the library needs it to compile, and the executable to link.
+    lib_mod.link_libcpp = true;
+    of_mod.link_libcpp = true;
+
+    const root = libs.path(b, "openFrameworks");
+    lib_mod.addCSourceFiles(.{ .root = root, .files = core_sources, .flags = objc_flags, .language = .objective_cpp });
+    lib_mod.addCSourceFiles(.{ .root = root, .files = macos_objcpp_sources, .flags = objc_flags, .language = .objective_cpp });
+    lib_mod.addCSourceFiles(.{ .root = root, .files = macos_objc_sources, .flags = c_objc_flags, .language = .objective_c });
+
+    // See `configureWindows` for why link inputs go on the `of` module.
+    for (findMacosLibs(b, b.pathJoin(&.{ of_root, "libs" }))) |lib| of_mod.addObjectFile(.{ .cwd_relative = lib });
+    for (macos_frameworks) |name| of_mod.linkFramework(name, .{});
+    for (macos_system_libs) |name| of_mod.linkSystemLibrary(name, .{});
+    return cxx_flags;
+}
+
+/// Every `libs/<name>/lib/osx/*.a` of the release, as oF's makefiles find
+/// them, but for the core's own (`openFrameworksCompiled`), which this
+/// package compiles itself. A library missing from a release is then simply
+/// not linked, and one a release adds is linked without a change here.
+fn findMacosLibs(b: *std.Build, libs_dir: []const u8) []const []const u8 {
+    const io = b.graph.io;
+    var found: std.ArrayList([]const u8) = .empty;
+
+    var dir = std.Io.Dir.cwd().openDir(io, libs_dir, .{ .iterate = true }) catch |err|
+        std.debug.panic("openframeworks_zig: cannot open {s}: {t}", .{ libs_dir, err });
+    defer dir.close(io);
+    var it = dir.iterate();
+    while (it.next(io) catch |err| std.debug.panic("openframeworks_zig: cannot list {s}: {t}", .{ libs_dir, err })) |lib| {
+        if (lib.kind != .directory or std.mem.eql(u8, lib.name, "openFrameworksCompiled")) continue;
+        const sub = b.pathJoin(&.{ lib.name, "lib", "osx" });
+        var osx = dir.openDir(io, sub, .{ .iterate = true }) catch continue;
+        defer osx.close(io);
+        var files = osx.iterate();
+        while (files.next(io) catch null) |file| {
+            if (file.kind != .file or !std.mem.endsWith(u8, file.name, ".a")) continue;
+            found.append(b.allocator, b.pathJoin(&.{ libs_dir, sub, file.name })) catch @panic("OOM");
+        }
+    }
+    // Directory order is the file system's; sorting keeps the link line, and
+    // with it the cache key, the same from one machine to the next.
+    std.mem.sort([]const u8, found.items, {}, struct {
+        fn lessThan(_: void, x: []const u8, y: []const u8) bool {
+            return std.mem.lessThan(u8, x, y);
+        }
+    }.lessThan);
+    return found.items;
+}
+
+/// `libs/<...>` include directories, from openFrameworksRelease.props and
+/// CoreOF.xcconfig. Each release lacks a few of the other's; a directory that
+/// does not exist is simply not searched.
 const include_dirs = [_][]const u8{
     "openFrameworks",
     "openFrameworks/graphics",
@@ -227,9 +352,12 @@ const include_dirs = [_][]const u8{
     "curl/include",
     "uriparser/include",
     "pugixml/include",
+    "brotli/include",
 };
 
-/// Every translation unit of openframeworksLib.vcxproj, relative to libs/openFrameworks.
+/// The translation units every platform compiles, relative to
+/// libs/openFrameworks: openframeworksLib.vcxproj less its Windows-only
+/// players, which is also the makefile's list less its exclusions.
 const core_sources = &[_][]const u8{
     "3d/of3dPrimitives.cpp",
     "3d/of3dUtils.cpp",
@@ -275,8 +403,6 @@ const core_sources = &[_][]const u8{
     "math/ofQuaternion.cpp",
     "math/ofVec2f.cpp",
     "math/ofVec4f.cpp",
-    "sound/ofFmodSoundPlayer.cpp",
-    "sound/ofMediaFoundationSoundPlayer.cpp",
     "sound/ofRtAudioSoundStream.cpp",
     "sound/ofSoundBaseTypes.cpp",
     "sound/ofSoundBuffer.cpp",
@@ -298,12 +424,43 @@ const core_sources = &[_][]const u8{
     "utils/ofURLFileLoader.cpp",
     "utils/ofUtils.cpp",
     "utils/ofXml.cpp",
-    "video/ofDirectShowGrabber.cpp",
-    "video/ofDirectShowPlayer.cpp",
-    "video/ofMediaFoundationPlayer.cpp",
     "video/ofVideoGrabber.cpp",
     "video/ofVideoPlayer.cpp",
 };
+
+/// The rest of openframeworksLib.vcxproj: DirectShow and Media Foundation,
+/// and the fmod player, which `OF_NO_FMOD` compiles to nothing.
+const windows_sources = &[_][]const u8{
+    "sound/ofFmodSoundPlayer.cpp",
+    "sound/ofMediaFoundationSoundPlayer.cpp",
+    "video/ofDirectShowGrabber.cpp",
+    "video/ofDirectShowPlayer.cpp",
+    "video/ofMediaFoundationPlayer.cpp",
+};
+
+/// AVFoundation, macOS's video and sound backends.
+const macos_objcpp_sources = &[_][]const u8{
+    "sound/ofAVEngineSoundPlayer.mm",
+    "video/ofAVFoundationGrabber.mm",
+    "video/ofAVFoundationPlayer.mm",
+};
+const macos_objc_sources = &[_][]const u8{
+    "video/ofAVFoundationVideoPlayer.m",
+};
+
+/// `OF_CORE_FRAMEWORKS` of CoreOF.xcconfig, less AGL: nothing here uses it,
+/// and recent SDKs no longer carry it.
+const macos_frameworks = [_][]const u8{
+    "Accelerate",   "AppKit",              "ApplicationServices", "AudioToolbox",
+    "AVFoundation", "Cocoa",               "CoreAudio",           "CoreFoundation",
+    "CoreMedia",    "CoreServices",        "CoreVideo",           "Foundation",
+    "IOKit",        "Metal",               "OpenGL",              "QuartzCore",
+    "Security",     "SystemConfiguration",
+};
+
+/// `PLATFORM_LIBRARIES` of config.osx.default.mk, and the system zlib, which
+/// the release's png, freetype, cairo and curl expect.
+const macos_system_libs = [_][]const u8{ "objc", "z" };
 
 const PrebuiltLib = struct { dir: []const u8, file: []const u8 };
 

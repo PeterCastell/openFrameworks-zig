@@ -7,9 +7,16 @@
 //! with clang's `-fdump-vtable-layouts` for oF 0.12.1, read from a
 //! translation unit that constructs one of each: slot for slot for the
 //! classes with one table, by length for `ofBaseApp`'s two.
+//!
+//! The dumps differ by ABI, and so do the expectations. MSVC gives a class
+//! one destructor slot and reverses each group of overloads; Itanium (macOS)
+//! gives it two, complete then deleting, and keeps the header's order.
 const std = @import("std");
+const builtin = @import("builtin");
 const cpp = @import("cpp_bindgen");
 const of = @import("of");
+
+const msvc = builtin.target.abi == .msvc;
 
 const Node = of.Node;
 const Camera = of.Camera;
@@ -22,11 +29,21 @@ const BoxPrimitive = of.primitives.BoxPrimitive;
 
 const Want = struct { kind: cpp.vtable.SlotKind, name: []const u8, args: usize, owner: type };
 
-fn d(comptime owner: type) Want {
-    return .{ .kind = .dtor_deleting, .name = "~", .args = 0, .owner = owner };
+/// The destructor's slots: MSVC's one deleting destructor, or Itanium's
+/// complete destructor and deleting destructor.
+fn d(comptime owner: type) []const Want {
+    const deleting: Want = .{ .kind = .dtor_deleting, .name = "~", .args = 0, .owner = owner };
+    if (msvc) return &.{deleting};
+    return &.{ .{ .kind = .dtor_complete, .name = "~", .args = 0, .owner = owner }, deleting };
 }
 fn m(comptime name: []const u8, comptime args: usize, comptime owner: type) Want {
     return .{ .kind = .method, .name = name, .args = args, .owner = owner };
+}
+
+/// Two overloads as the header declares them, in their slot order: MSVC
+/// reverses a group of overloads, Itanium keeps it.
+fn overloads(comptime first: Want, comptime second: Want) []const Want {
+    return if (msvc) &.{ second, first } else &.{ first, second };
 }
 
 fn expectLayout(comptime T: type, comptime want: []const Want) !void {
@@ -43,13 +60,10 @@ fn expectLayout(comptime T: type, comptime want: []const Want) !void {
     }
 }
 
-/// `ofNode`'s seven slots: `customDraw()` before `customDraw(renderer)`,
-/// the reverse of the header, which is MSVC grouping an overload set.
-fn nodeSlots(comptime dtor: type, comptime draw_r: type, comptime draw: type, comptime pos: type, comptime ori: type) [7]Want {
-    return .{
-        d(dtor),
-        m("customDraw", 0, Node),
-        m("customDraw", 1, draw_r),
+/// `ofNode`'s slots. The header declares `customDraw(renderer)` before
+/// `customDraw()`.
+fn nodeSlots(comptime dtor: type, comptime draw_r: type, comptime draw: type, comptime pos: type, comptime ori: type) []const Want {
+    return d(dtor) ++ overloads(m("customDraw", 1, draw_r), m("customDraw", 0, Node)) ++ &[_]Want{
         m("draw", 0, draw),
         m("onPositionChanged", 0, pos),
         m("onOrientationChanged", 0, ori),
@@ -58,28 +72,22 @@ fn nodeSlots(comptime dtor: type, comptime draw_r: type, comptime draw: type, co
 }
 
 test "node layouts match clang's" {
-    try expectLayout(Node, &nodeSlots(Node, Node, Node, Node, Node));
-    try expectLayout(Primitive, &nodeSlots(Primitive, Node, Primitive, Node, Node));
-    try expectLayout(BoxPrimitive, &nodeSlots(BoxPrimitive, Node, Primitive, Node, Node));
-    try expectLayout(Light, &nodeSlots(Light, Light, Node, Light, Light));
-    try expectLayout(Camera, &(nodeSlots(Camera, Node, Node, Node, Node) ++ [_]Want{
-        m("begin", 1, Camera),
-        m("begin", 0, Camera),
-        m("end", 0, Camera),
-    }));
-    try expectLayout(EasyCam, &(nodeSlots(EasyCam, Node, Node, EasyCam, Node) ++ [_]Want{
-        m("begin", 1, EasyCam),
-        m("begin", 0, EasyCam),
-        m("end", 0, Camera),
-    }));
+    try expectLayout(Node, nodeSlots(Node, Node, Node, Node, Node));
+    try expectLayout(Primitive, nodeSlots(Primitive, Node, Primitive, Node, Node));
+    try expectLayout(BoxPrimitive, nodeSlots(BoxPrimitive, Node, Primitive, Node, Node));
+    try expectLayout(Light, nodeSlots(Light, Light, Node, Light, Light));
+    // The header declares `begin()` before `begin(viewport)`.
+    try expectLayout(Camera, nodeSlots(Camera, Node, Node, Node, Node) ++
+        overloads(m("begin", 0, Camera), m("begin", 1, Camera)) ++ &[_]Want{m("end", 0, Camera)});
+    try expectLayout(EasyCam, nodeSlots(EasyCam, Node, Node, EasyCam, Node) ++
+        overloads(m("begin", 0, EasyCam), m("begin", 1, EasyCam)) ++ &[_]Want{m("end", 0, Camera)});
 }
 
 /// The material interface, in header order: no virtual function of either
-/// class is overloaded, so MSVC keeps the order. `owners` is who defines
-/// slots 1 to 17; `isBound`, `bind` and `unbind` follow.
-fn materialSlots(comptime T: type, comptime unbind: type) [20]Want {
-    return .{
-        d(T),
+/// class is overloaded, so MSVC keeps the order. `T` defines the getters
+/// through `updateEnvironmentMaps`; `isBound`, `bind` and `unbind` follow.
+fn materialSlots(comptime T: type, comptime unbind: type) []const Want {
+    return d(T) ++ &[_]Want{
         m("getDiffuseColor", 0, T),
         m("getAmbientColor", 0, T),
         m("getSpecularColor", 0, T),
@@ -103,18 +111,19 @@ fn materialSlots(comptime T: type, comptime unbind: type) [20]Want {
 }
 
 test "ofBaseApp's two tables have clang's lengths" {
-    // 48 and 6 entries in clang's dump, each counting the RTTI word.
+    // MSVC: 48 and 6 entries in clang's dump, each counting the RTTI word.
+    // Itanium: 50 and 8, each counting `offset_to_top` and the RTTI word,
+    // with the extra destructor slot in both.
     const tables = comptime cpp.vtable.tables(of.BaseApp);
     try std.testing.expectEqual(2, tables.len);
-    try std.testing.expectEqual(47, tables[0].slots.len);
-    try std.testing.expectEqual(5, tables[1].slots.len);
+    try std.testing.expectEqual(if (msvc) 47 else 48, tables[0].slots.len);
+    try std.testing.expectEqual(if (msvc) 5 else 6, tables[1].slots.len);
     try std.testing.expectEqual(8, tables[1].offset);
 }
 
 test "mesh, material, font and rectangle layouts match clang's" {
     const Mesh = of.Mesh;
-    try expectLayout(Mesh, &.{
-        d(Mesh),
+    try expectLayout(Mesh, d(Mesh) ++ &[_]Want{
         m("enableNormals", 0, Mesh),
         m("disableNormals", 0, Mesh),
         m("usingNormals", 0, Mesh),
@@ -130,10 +139,10 @@ test "mesh, material, font and rectangle layouts match clang's" {
         m("draw", 1, Mesh),
     });
     const BaseMaterial = of.material.BaseMaterial;
-    try expectLayout(BaseMaterial, &materialSlots(BaseMaterial, BaseMaterial));
-    try expectLayout(of.Material, &materialSlots(of.Material, of.Material));
-    try expectLayout(of.Font, &.{d(of.Font)});
-    try expectLayout(of.OfRectangle, &.{d(of.OfRectangle)});
+    try expectLayout(BaseMaterial, materialSlots(BaseMaterial, BaseMaterial));
+    try expectLayout(of.Material, materialSlots(of.Material, of.Material));
+    try expectLayout(of.Font, d(of.Font));
+    try expectLayout(of.OfRectangle, d(of.OfRectangle));
 }
 
 // layouts against the real vtables
@@ -169,7 +178,7 @@ const Tracker = struct {
 
     fn scaleChanged(self: *Tracker) void {
         self.scaled += 1;
-        // "super": ofNode's own protected onScaleChanged, by its MSVC name.
+        // "super": ofNode's own protected onScaleChanged, by its mangled name.
         of.bind(Node.onScaleChanged_sig)(&self.cpp.base);
     }
 
@@ -258,7 +267,7 @@ const Pulse = struct {
     pub const cpp_overrides = .{.{ of.Material.getDiffuseColor_sig, diffuse }};
 
     /// MSVC returns the color through a hidden pointer, which the adapter
-    /// fills from this return value.
+    /// fills from this return value; Itanium returns it in registers.
     fn diffuse(self: *const Pulse) of.FloatColor {
         return of.FloatColor.rgb(self.level, 0, 1 - self.level);
     }

@@ -18,6 +18,9 @@
 //! and the immediate-mode solids in `graphics3d.zig` do too.
 const std = @import("std");
 const cpp = @import("cpp_bindgen");
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
+/// the opaque storage sizes below differ between them.
+const msvc = @import("builtin").target.abi == .msvc;
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const FloatColor = @import("color.zig").FloatColor;
@@ -80,7 +83,7 @@ pub fn getGlobalAmbientColor() FloatColor {
 /// constructed in place like every other class here.
 pub const Light = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
-    _storage: [272]u8 align(8),
+    _storage: [if (msvc) 272 else 280]u8 align(8),
 
     pub const cpp_name = "ofLight";
     pub const cpp_kind: cpp.Kind = .class;

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  OF_VERSION: 0.12.1
+
+jobs:
+  macos:
+    # Apple Silicon. The x86_64 run goes through Rosetta, so one runner
+    # covers both Mac layouts (they differ: libc++ aligns std::function to 16
+    # bytes on x86_64).
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          # The version cpp-bindgen's suite was last checked against.
+          version: 0.17.0-dev.2138+55455adf1
+
+      # The osx release is half a gigabyte; fetch it once per version.
+      - name: Cache openFrameworks
+        id: of-cache
+        uses: actions/cache@v4
+        with:
+          path: of_v${{ env.OF_VERSION }}_osx_release
+          key: of-osx-${{ env.OF_VERSION }}
+      - name: Fetch openFrameworks
+        if: steps.of-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL -o of.tar.gz "https://github.com/openframeworks/openFrameworks/releases/download/${OF_VERSION}/of_v${OF_VERSION}_osx_release.tar.gz"
+          tar xzf of.tar.gz
+          rm of.tar.gz
+          test -d "of_v${OF_VERSION}_osx_release/libs/openFrameworks"
+
+      # -j1: two Zig compilations at once can fail spuriously with
+      # "unable to load"; the build fans out into several.
+      - name: Test and build the examples (aarch64-macos)
+        run: zig build test example example-3d example-transforms -j1 --summary all -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"
+      - name: Check Rosetta
+        run: arch -x86_64 /usr/bin/true || { echo "::error::Rosetta 2 is not installed on this runner"; exit 1; }
+      - name: Test and build the examples (x86_64-macos, under Rosetta)
+        run: zig build test example example-3d example-transforms -j1 --summary all -Dtarget=x86_64-macos -frosetta -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"
