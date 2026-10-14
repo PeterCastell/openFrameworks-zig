@@ -104,6 +104,36 @@ immediate-mode solids (`drawBox`, `drawSphere`, `drawCylinder`, `drawCone`,
 `drawAxis`, `drawGrid`, `drawArrow` and the lighting switches are free
 functions on `of`.
 
+A Zig type can extend any of these classes and override its virtual
+functions, with no C++. It holds the C++ object as a field, an `of.Subclass`,
+and pairs each override with the base's signature:
+
+```zig
+const Beacon = struct {
+    cpp: of.Subclass(of.Node, Beacon, "cpp"),
+    radius: f32 = 8,
+
+    pub const cpp_overrides = .{.{ of.Node.customDraw_sig, customDraw }};
+
+    fn customDraw(self: *Beacon) void {
+        of.drawIcoSphere(self.radius);
+    }
+};
+
+beacon.cpp.init();           // in setup; beacon.cpp.deinit() in exit
+beacon.cpp.base.draw();      // in draw
+```
+
+`draw` hands the node to oF's renderer, which applies the node's transform and
+calls `customDraw`, so the beacon draws in its own coordinates. The protected
+hooks `onPositionChanged`, `onOrientationChanged` and `onScaleChanged` are
+overridden the same way. Inside an override, `of.bind(signature)` calls the
+base's own definition. The wrappers for virtual functions, such as `draw`,
+`begin` and `end`, make virtual calls, so an override is reached from Zig as it
+is from C++. `example/3d.zig` parents a beacon to the turning box. Every other
+class here with virtual functions, such as `of.Material` and `of.Mesh`, can be
+extended the same way.
+
 `of.Mesh` is `ofMesh`. Its bulk calls take slices of the ABI types and hand
 them to oF's pointer-and-length overloads, so nothing is copied on the way in;
 its getters return the mesh's own arrays as slices, so nothing is copied on the
@@ -344,6 +374,10 @@ address you take does not move, so the temporary is valid for the call.
 zig build run -Dof-root=C:/path/to/of_v0.12.1_vs_64_release
 ```
 
+`zig build test` checks the bindings against the oF build: the vtable layouts
+they claim, and a Zig subclass of `ofBaseApp`. It needs `-Dof-root` too, but no
+window.
+
 `zig build glue` writes the generated C++ glue to `zig-out/glue/of_glue.cpp`.
 Read that file to examine the glue. It is the same file the build compiles
 into the library, not a second copy of it, and generating it needs no oF
@@ -415,11 +449,16 @@ one and that the whole class has the declared size. A method that the base
 declares is bound once, on the base; a derived type reaches it through the
 accessor. The one exception is a method that pairs with one the derived class
 overrides, such as `EasyCam.end` beside `EasyCam.begin`: it is bound on the
-derived type with `.class = Camera`, which cpp-bindgen checks the same way. A
-virtual method is marked `.virtual = true` in its `Signature`, because MSVC
-mangles it differently; the call is still a direct call to that class's
-implementation, so `Camera.begin` on an `EasyCam` would run `ofCamera::begin`,
-which is why `EasyCam` binds its own.
+derived type with `.class = Camera`, which cpp-bindgen checks the same way.
+
+A virtual method is marked `.virtual = true` in its `Signature`, a pure one
+`.pure = true`, and a non-public one `.access = .protected` or `.private`,
+because MSVC mangles all three into the symbol. Its wrapper calls
+`cpp.bindVirtual`, which loads the function from the object's vtable, so the
+override runs whether a C++ class or a Zig type defines it. Every class with
+virtual functions lists the ones its header declares in `cpp_virtuals`, in
+header order, the destructor and overrides included. cpp-bindgen computes the
+vtables from those lists, for virtual calls and for `of.Subclass`.
 
 The build compiles two pieces of C++ into the library, in addition to oF:
 
@@ -430,10 +469,13 @@ The build compiles two pieces of C++ into the library, in addition to oF:
   headers. It also forces definitions for the header-only `std::string` members.
   Thus a layout that changes between oF patch versions is a compile error, not a
   memory corruption. A wrong signature is a link error.
-- **`src/cpp/ofzig_app.cpp`.** oF drives an app through the virtual functions of
-  `ofBaseApp`. A subclass is the one construct that cpp-bindgen cannot express.
-  This file supplies that subclass. It sends each virtual call to a C function
-  pointer. `app.zig` sets those pointers from the app type.
+- **The app is a Zig subclass of `ofBaseApp`.** oF drives an app through the
+  virtual functions of `ofBaseApp`. `run` wraps the app type in cpp-bindgen's
+  `Subclass`, which builds that subclass's vtables at comptime, so C++ sees an
+  `ofBaseApp` whose overrides call the app type's methods. There is no
+  hand-written C++ in the package. In a Debug build the vtables `ofBaseApp()`
+  installs are checked against the binding's list of virtual functions every
+  time an app starts.
 
 The build always compiles oF in its Release configuration, whatever the Zig
 optimize mode. That configuration is `NDEBUG`, `_ITERATOR_DEBUG_LEVEL=0` and the
@@ -449,9 +491,6 @@ that the bindings describe are also release layouts.
   `std::string`. The sound, video, image, texture and shader classes are not
   bound. To add any other oF function, write one `Signature`. The glue
   reports an error if that signature is incorrect.
-- **Subclassing.** A Zig type cannot override a C++ virtual function, so an
-  `ofNode` with a custom `customDraw`, or an `ofBaseApp` other than the one
-  `src/cpp/ofzig_app.cpp` supplies, cannot be written in Zig.
 - **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name
   longer than 512 UTF-16 code units does not load. See `string.Path`.
 
@@ -462,8 +501,13 @@ that the bindings describe are also release layouts.
    names and a `cpp_abi`. The next build reports an error if the layout or the
    category is incorrect.
 2. Declare `pub const <cppName>_sig: Signature` next to a Zig wrapper that calls
-   `cpp.bind(<cppName>_sig)`. For an overloaded function, add a suffix to the
-   constant. Give the Zig function a distinct name.
+   `cpp.bind(<cppName>_sig)`, or `cpp.bindVirtual` for a virtual function. For
+   an overloaded function, add a suffix to the constant. Give the Zig function
+   a distinct name.
+3. If the class has virtual functions, list every one its header declares in
+   `cpp_virtuals`, and add the class to the `verifyVtable` test in
+   `test/vtables.zig`. `zig build test` then checks each slot against the
+   vtable the C++ compiler emitted.
 
 That is all. The glue scan reads public signatures at module level, and inside
 each type that it finds. Thus the signature of a member stays on its type, and

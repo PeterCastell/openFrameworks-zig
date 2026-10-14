@@ -57,6 +57,12 @@ inline fn bind(comptime sig: Signature) Bound(sig) {
     @setEvalBranchQuota(1 << 16);
     return cpp.bind(sig);
 }
+/// `cpp.bindVirtual` under the same budget: the call loads the function
+/// from the mesh's vtable, as the same call in C++ would.
+inline fn bindVirtual(comptime sig: Signature) Bound(sig) {
+    @setEvalBranchQuota(1 << 16);
+    return cpp.bindVirtual(sig);
+}
 /// The bound function's type, computed under the same budget: a return
 /// type is evaluated outside the function body, where the quota above does
 /// not reach.
@@ -329,15 +335,15 @@ pub const Mesh = extern struct {
     }
     pub const enableNormals_sig: Signature = .{ .name = "enableNormals", .this = *Mesh, .virtual = true };
     pub fn enableNormals(self: *Mesh) void {
-        bind(enableNormals_sig)(self);
+        bindVirtual(enableNormals_sig)(self);
     }
     pub const disableNormals_sig: Signature = .{ .name = "disableNormals", .this = *Mesh, .virtual = true };
     pub fn disableNormals(self: *Mesh) void {
-        bind(disableNormals_sig)(self);
+        bindVirtual(disableNormals_sig)(self);
     }
     pub const usingNormals_sig: Signature = .{ .name = "usingNormals", .this = *const Mesh, .ret = bool, .virtual = true };
     pub fn usingNormals(self: *const Mesh) bool {
-        return bind(usingNormals_sig)(self);
+        return bindVirtual(usingNormals_sig)(self);
     }
     /// `smoothNormals(degrees)`, taking radians: recomputes the normals,
     /// averaging across faces that meet at less than `angle`.
@@ -399,15 +405,15 @@ pub const Mesh = extern struct {
     }
     pub const enableColors_sig: Signature = .{ .name = "enableColors", .this = *Mesh, .virtual = true };
     pub fn enableColors(self: *Mesh) void {
-        bind(enableColors_sig)(self);
+        bindVirtual(enableColors_sig)(self);
     }
     pub const disableColors_sig: Signature = .{ .name = "disableColors", .this = *Mesh, .virtual = true };
     pub fn disableColors(self: *Mesh) void {
-        bind(disableColors_sig)(self);
+        bindVirtual(disableColors_sig)(self);
     }
     pub const usingColors_sig: Signature = .{ .name = "usingColors", .this = *const Mesh, .ret = bool, .virtual = true };
     pub fn usingColors(self: *const Mesh) bool {
-        return bind(usingColors_sig)(self);
+        return bindVirtual(usingColors_sig)(self);
     }
 
     // texture coordinates
@@ -460,15 +466,15 @@ pub const Mesh = extern struct {
     }
     pub const enableTextures_sig: Signature = .{ .name = "enableTextures", .this = *Mesh, .virtual = true };
     pub fn enableTextures(self: *Mesh) void {
-        bind(enableTextures_sig)(self);
+        bindVirtual(enableTextures_sig)(self);
     }
     pub const disableTextures_sig: Signature = .{ .name = "disableTextures", .this = *Mesh, .virtual = true };
     pub fn disableTextures(self: *Mesh) void {
-        bind(disableTextures_sig)(self);
+        bindVirtual(disableTextures_sig)(self);
     }
     pub const usingTextures_sig: Signature = .{ .name = "usingTextures", .this = *const Mesh, .ret = bool, .virtual = true };
     pub fn usingTextures(self: *const Mesh) bool {
-        return bind(usingTextures_sig)(self);
+        return bindVirtual(usingTextures_sig)(self);
     }
 
     // indices
@@ -529,15 +535,15 @@ pub const Mesh = extern struct {
     }
     pub const enableIndices_sig: Signature = .{ .name = "enableIndices", .this = *Mesh, .virtual = true };
     pub fn enableIndices(self: *Mesh) void {
-        bind(enableIndices_sig)(self);
+        bindVirtual(enableIndices_sig)(self);
     }
     pub const disableIndices_sig: Signature = .{ .name = "disableIndices", .this = *Mesh, .virtual = true };
     pub fn disableIndices(self: *Mesh) void {
-        bind(disableIndices_sig)(self);
+        bindVirtual(disableIndices_sig)(self);
     }
     pub const usingIndices_sig: Signature = .{ .name = "usingIndices", .this = *const Mesh, .ret = bool, .virtual = true };
     pub fn usingIndices(self: *const Mesh) bool {
-        return bind(usingIndices_sig)(self);
+        return bindVirtual(usingIndices_sig)(self);
     }
     /// Colors every vertex that the indices from `start` up to and including
     /// `end` refer to.
@@ -575,8 +581,30 @@ pub const Mesh = extern struct {
     /// `draw(ofPolyRenderMode)`
     pub const draw_mode_sig: Signature = .{ .name = "draw", .this = *const Mesh, .args = &.{PolyRenderMode}, .virtual = true };
     pub fn drawMode(self: *const Mesh, mode: PolyRenderMode) void {
-        bind(draw_mode_sig)(self, mode);
+        bindVirtual(draw_mode_sig)(self, mode);
     }
+
+    /// Every virtual function `ofMesh.h` declares on `ofMesh_`, in header
+    /// order. `draw()` is not virtual, but it is the first declaration of
+    /// the name, and MSVC puts the `draw` overloads where the name first
+    /// appears: `cpp.firstNamed` marks that place.
+    pub const cpp_virtuals: []const Signature = &.{
+        dtor_sig,
+        enableNormals_sig,
+        disableNormals_sig,
+        usingNormals_sig,
+        enableColors_sig,
+        disableColors_sig,
+        usingColors_sig,
+        enableTextures_sig,
+        disableTextures_sig,
+        usingTextures_sig,
+        enableIndices_sig,
+        disableIndices_sig,
+        usingIndices_sig,
+        cpp.firstNamed("draw"),
+        draw_mode_sig,
+    };
 
     // files
 

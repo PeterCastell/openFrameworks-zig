@@ -182,11 +182,16 @@ pub const Primitive = extern struct {
         cpp.bind(draw_mode_sig)(self, mode);
     }
     /// `draw()`: filled, or as `ofFill`/`ofNoFill` says. This overrides
-    /// `ofNode::draw`, and is virtual for it.
+    /// `ofNode::draw`, and the call is virtual.
     pub const draw_sig: Signature = .{ .name = "draw", .this = *const Primitive, .virtual = true };
     pub fn draw(self: *const Primitive) void {
-        cpp.bind(draw_sig)(self);
+        cpp.bindVirtual(draw_sig)(self);
     }
+
+    /// Every virtual function `of3dPrimitives.h` declares on
+    /// `of3dPrimitive`, in header order. `draw(ofPolyRenderMode)` is not
+    /// virtual.
+    pub const cpp_virtuals: []const Signature = &.{ dtor_sig, draw_sig };
     /// One line of `length` per vertex normal, or per face with
     /// `face_normals`.
     pub const drawNormals_sig: Signature = .{ .name = "drawNormals", .this = *const Primitive, .args = &.{ f32, bool } };
@@ -299,6 +304,8 @@ pub const PlanePrimitive = extern struct {
     pub fn deinit(self: *PlanePrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofPlanePrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     /// `set(width, height, columns, rows, mode)`: rebuilds the mesh.
     pub const set_full_sig: Signature = .{ .name = "set", .this = *PlanePrimitive, .args = &.{ f32, f32, i32, i32, PrimitiveMode } };
@@ -395,6 +402,8 @@ pub const SpherePrimitive = extern struct {
     pub fn deinit(self: *SpherePrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofSpherePrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     /// `set(radius, resolution, mode)`: rebuilds the mesh.
     pub const set_sig: Signature = .{ .name = "set", .this = *SpherePrimitive, .args = &.{ f32, i32, PrimitiveMode } };
@@ -461,6 +470,8 @@ pub const IcoSpherePrimitive = extern struct {
     pub fn deinit(self: *IcoSpherePrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofIcoSpherePrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     pub const set_sig: Signature = .{ .name = "set", .this = *IcoSpherePrimitive, .args = &.{ f32, i32 } };
     pub fn set(self: *IcoSpherePrimitive, radius: f32, resolution: u32) void {
@@ -525,6 +536,8 @@ pub const CylinderPrimitive = extern struct {
     pub fn deinit(self: *CylinderPrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofCylinderPrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     /// `set(radius, height, radiusSegments, heightSegments, capSegments, capped, mode)`
     pub const set_full_sig: Signature = .{
@@ -656,6 +669,8 @@ pub const ConePrimitive = extern struct {
     pub fn deinit(self: *ConePrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofConePrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     /// `set(radius, height, radiusSegments, heightSegments, capSegments, mode)`
     pub const set_full_sig: Signature = .{
@@ -786,6 +801,8 @@ pub const BoxPrimitive = extern struct {
     pub fn deinit(self: *BoxPrimitive) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofBoxPrimitive` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     /// `set(width, height, depth, resWidth, resHeight, resDepth)`
     pub const set_full_sig: Signature = .{ .name = "set", .this = *BoxPrimitive, .args = &.{ f32, f32, f32, i32, i32, i32 } };

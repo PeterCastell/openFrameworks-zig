@@ -22,6 +22,7 @@ const Signature = cpp.Signature;
 const Ref = cpp.Ref;
 const FloatColor = @import("color.zig").FloatColor;
 const Node = @import("node.zig").Node;
+const BaseRenderer = @import("node.zig").BaseRenderer;
 
 /// `ofLightType`
 pub const LightType = enum(i32) {
@@ -104,6 +105,15 @@ pub const Light = extern struct {
     pub fn deinit(self: *Light) void {
         cpp.bind(dtor_sig)(self);
     }
+
+    // `ofLight` overrides three of `ofNode`'s virtual functions, all in a
+    // private section, which MSVC mangles into their symbols. Its destructor
+    // is implicit, so it is not listed.
+    pub const customDraw_renderer_sig: Signature = .{ .name = "customDraw", .this = *const Light, .args = &.{?*const BaseRenderer}, .virtual = true, .access = .private };
+    pub const onPositionChanged_sig: Signature = .{ .name = "onPositionChanged", .this = *Light, .virtual = true, .access = .private };
+    pub const onOrientationChanged_sig: Signature = .{ .name = "onOrientationChanged", .this = *Light, .virtual = true, .access = .private };
+    /// Every virtual function `ofLight.h` declares, in header order.
+    pub const cpp_virtuals: []const Signature = &.{ customDraw_renderer_sig, onPositionChanged_sig, onOrientationChanged_sig };
 
     /// `setup()`: claims a renderer slot if the constructor could not, which
     /// happens when the light is constructed before the window exists.

@@ -33,6 +33,7 @@ const ResizeEventArgs = events.ResizeEventArgs;
 const TouchEventArgs = events.TouchEventArgs;
 const DragInfo = events.DragInfo;
 const Message = events.Message;
+const EventArgs = events.EventArgs;
 
 /// `ofWindowMode`
 pub const WindowMode = enum(i32) {
@@ -43,12 +44,164 @@ pub const WindowMode = enum(i32) {
     pub const cpp_kind: cpp.Kind = .@"enum";
 };
 
-/// `ofBaseApp`. Only ever handled through a pointer; instances come from the
-/// C++ trampoline in `src/cpp/ofzig_app.cpp`.
-pub const BaseApp = opaque {
+/// `ofSoundBuffer`. Only ever passed by reference here.
+pub const SoundBuffer = opaque {
+    pub const cpp_name = "ofSoundBuffer";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
+/// `ofBaseSoundInput`, the first base of `ofBaseApp`: a vtable pointer and
+/// nothing else.
+pub const BaseSoundInput = extern struct {
+    _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
+
+    pub const cpp_name = "ofBaseSoundInput";
+    pub const cpp_kind: cpp.Kind = .class;
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_virtual_dtor = true;
+
+    const Self = BaseSoundInput;
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *Self };
+    pub const audioIn_buffer_sig: Signature = .{ .name = "audioIn", .this = *Self, .args = &.{cpp.Ref(*SoundBuffer)}, .virtual = true };
+    pub const audioIn_device_sig: Signature = .{ .name = "audioIn", .this = *Self, .args = &.{ [*]f32, i32, i32, i32, u64 }, .virtual = true };
+    pub const audioIn_sig: Signature = .{ .name = "audioIn", .this = *Self, .args = &.{ [*]f32, i32, i32 }, .virtual = true };
+    pub const audioReceived_sig: Signature = .{ .name = "audioReceived", .this = *Self, .args = &.{ [*]f32, i32, i32 }, .virtual = true };
+    pub const cpp_virtuals: []const Signature = &.{ dtor_sig, audioIn_buffer_sig, audioIn_device_sig, audioIn_sig, audioReceived_sig };
+};
+
+/// `ofBaseSoundOutput`, the second base of `ofBaseApp`.
+pub const BaseSoundOutput = extern struct {
+    _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
+
+    pub const cpp_name = "ofBaseSoundOutput";
+    pub const cpp_kind: cpp.Kind = .class;
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_virtual_dtor = true;
+
+    const Self = BaseSoundOutput;
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *Self };
+    pub const audioOut_buffer_sig: Signature = .{ .name = "audioOut", .this = *Self, .args = &.{cpp.Ref(*SoundBuffer)}, .virtual = true };
+    pub const audioOut_device_sig: Signature = .{ .name = "audioOut", .this = *Self, .args = &.{ [*]f32, i32, i32, i32, u64 }, .virtual = true };
+    pub const audioOut_sig: Signature = .{ .name = "audioOut", .this = *Self, .args = &.{ [*]f32, i32, i32 }, .virtual = true };
+    pub const audioRequested_sig: Signature = .{ .name = "audioRequested", .this = *Self, .args = &.{ [*]f32, i32, i32 }, .virtual = true };
+    pub const cpp_virtuals: []const Signature = &.{ dtor_sig, audioOut_buffer_sig, audioOut_device_sig, audioOut_sig, audioRequested_sig };
+};
+
+/// `ofBaseApp`. Its two sound bases each bring a vtable, so an app object
+/// holds two vtable pointers, then `mouseX` and `mouseY`.
+///
+/// `run` subclasses it from Zig (`cpp.Subclass`), so every virtual function
+/// the header declares is listed below, in header order: cpp-bindgen
+/// computes the slots from that list, and checks them against the vtable
+/// `ofBaseApp()` installs every time an app starts in a safe build.
+pub const BaseApp = extern struct {
+    _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
+    mouseX: i32,
+    mouseY: i32,
+
     pub const cpp_name = "ofBaseApp";
     pub const cpp_kind: cpp.Kind = .class;
     pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_bases: []const type = &.{ BaseSoundInput, BaseSoundOutput };
+    pub const cpp_virtual_dtor = true;
+
+    const Self = BaseApp;
+    const Ref = cpp.Ref;
+    fn virt(comptime name: []const u8, comptime args: []const type) Signature {
+        return .{ .name = name, .this = *Self, .args = args, .virtual = true };
+    }
+
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *Self };
+    pub const setup_sig = virt("setup", &.{});
+    pub const update_sig = virt("update", &.{});
+    pub const draw_sig = virt("draw", &.{});
+    pub const exit_sig = virt("exit", &.{});
+    pub const windowResized_size_sig = virt("windowResized", &.{ i32, i32 });
+    pub const keyPressed_key_sig = virt("keyPressed", &.{i32});
+    pub const keyReleased_key_sig = virt("keyReleased", &.{i32});
+    pub const mouseMoved_xy_sig = virt("mouseMoved", &.{ i32, i32 });
+    pub const mouseDragged_xy_sig = virt("mouseDragged", &.{ i32, i32, i32 });
+    pub const mousePressed_xy_sig = virt("mousePressed", &.{ i32, i32, i32 });
+    pub const mouseReleased_xy_sig = virt("mouseReleased", &.{ i32, i32, i32 });
+    pub const mouseScrolled_xy_sig = virt("mouseScrolled", &.{ i32, i32, f32, f32 });
+    pub const mouseEntered_xy_sig = virt("mouseEntered", &.{ i32, i32 });
+    pub const mouseExited_xy_sig = virt("mouseExited", &.{ i32, i32 });
+    pub const dragEvent_sig = virt("dragEvent", &.{DragInfo});
+    pub const gotMessage_sig = virt("gotMessage", &.{Message});
+    // The overloads oF's events actually call. Their definitions in
+    // ofBaseApp.cpp forward to the plain ones above.
+    pub const setup_args_sig = virt("setup", &.{Ref(*EventArgs)});
+    pub const update_args_sig = virt("update", &.{Ref(*EventArgs)});
+    pub const draw_args_sig = virt("draw", &.{Ref(*EventArgs)});
+    pub const exit_args_sig = virt("exit", &.{Ref(*EventArgs)});
+    pub const windowResized_sig = virt("windowResized", &.{Ref(*ResizeEventArgs)});
+    pub const keyPressed_sig = virt("keyPressed", &.{Ref(*KeyEventArgs)});
+    pub const keyReleased_sig = virt("keyReleased", &.{Ref(*KeyEventArgs)});
+    pub const mouseMoved_sig = virt("mouseMoved", &.{Ref(*MouseEventArgs)});
+    pub const mouseDragged_sig = virt("mouseDragged", &.{Ref(*MouseEventArgs)});
+    pub const mousePressed_sig = virt("mousePressed", &.{Ref(*MouseEventArgs)});
+    pub const mouseReleased_sig = virt("mouseReleased", &.{Ref(*MouseEventArgs)});
+    pub const mouseScrolled_sig = virt("mouseScrolled", &.{Ref(*MouseEventArgs)});
+    pub const mouseEntered_sig = virt("mouseEntered", &.{Ref(*MouseEventArgs)});
+    pub const mouseExited_sig = virt("mouseExited", &.{Ref(*MouseEventArgs)});
+    pub const dragged_sig = virt("dragged", &.{Ref(*DragInfo)});
+    pub const messageReceived_sig = virt("messageReceived", &.{Ref(*Message)});
+    pub const touchDown_xy_sig = virt("touchDown", &.{ i32, i32, i32 });
+    pub const touchMoved_xy_sig = virt("touchMoved", &.{ i32, i32, i32 });
+    pub const touchUp_xy_sig = virt("touchUp", &.{ i32, i32, i32 });
+    pub const touchDoubleTap_xy_sig = virt("touchDoubleTap", &.{ i32, i32, i32 });
+    pub const touchCancelled_xy_sig = virt("touchCancelled", &.{ i32, i32, i32 });
+    pub const touchDown_sig = virt("touchDown", &.{Ref(*TouchEventArgs)});
+    pub const touchMoved_sig = virt("touchMoved", &.{Ref(*TouchEventArgs)});
+    pub const touchUp_sig = virt("touchUp", &.{Ref(*TouchEventArgs)});
+    pub const touchDoubleTap_sig = virt("touchDoubleTap", &.{Ref(*TouchEventArgs)});
+    pub const touchCancelled_sig = virt("touchCancelled", &.{Ref(*TouchEventArgs)});
+
+    pub const cpp_virtuals: []const Signature = &.{
+        dtor_sig,
+        setup_sig,
+        update_sig,
+        draw_sig,
+        exit_sig,
+        windowResized_size_sig,
+        keyPressed_key_sig,
+        keyReleased_key_sig,
+        mouseMoved_xy_sig,
+        mouseDragged_xy_sig,
+        mousePressed_xy_sig,
+        mouseReleased_xy_sig,
+        mouseScrolled_xy_sig,
+        mouseEntered_xy_sig,
+        mouseExited_xy_sig,
+        dragEvent_sig,
+        gotMessage_sig,
+        setup_args_sig,
+        update_args_sig,
+        draw_args_sig,
+        exit_args_sig,
+        windowResized_sig,
+        keyPressed_sig,
+        keyReleased_sig,
+        mouseMoved_sig,
+        mouseDragged_sig,
+        mousePressed_sig,
+        mouseReleased_sig,
+        mouseScrolled_sig,
+        mouseEntered_sig,
+        mouseExited_sig,
+        dragged_sig,
+        messageReceived_sig,
+        touchDown_xy_sig,
+        touchMoved_xy_sig,
+        touchUp_xy_sig,
+        touchDoubleTap_xy_sig,
+        touchCancelled_xy_sig,
+        touchDown_sig,
+        touchMoved_sig,
+        touchUp_sig,
+        touchDoubleTap_sig,
+        touchCancelled_sig,
+    };
 };
 
 pub const RunOptions = struct {
@@ -63,12 +216,13 @@ pub const RunOptions = struct {
 ///
 /// `app` must outlive the call; it is not copied.
 pub const ofSetupOpenGL_sig: Signature = .{ .name = "ofSetupOpenGL", .args = &.{ i32, i32, WindowMode } };
+pub const ofRunApp_sig: Signature = .{ .name = "ofRunApp", .args = &.{*BaseApp}, .ret = i32 };
 pub fn run(comptime T: type, app: *T, opts: RunOptions) i32 {
-    std.debug.assert(ofzig_callbacks_size() == @sizeOf(Callbacks));
-    const cbs = comptime callbacksFor(T);
     cpp.bind(ofSetupOpenGL_sig)(@bitCast(opts.width), @bitCast(opts.height), opts.mode);
-    const base = ofzig_app_new(&cbs, @ptrCast(app));
-    return cpp.bind(.{ .name = "ofRunApp", .args = &.{*BaseApp}, .ret = i32 })(base);
+    const S = AppBase(T);
+    S.instance = .{ .cpp = undefined, .app = app };
+    S.instance.cpp.init();
+    return cpp.bind(ofRunApp_sig)(&S.instance.cpp.base);
 }
 
 /// `ofExit(0)`: ends the main loop after the current frame.
@@ -234,114 +388,108 @@ pub fn getKeyPressed(k: i32) bool {
     return cpp.bind(ofGetKeyPressed_sig)(k);
 }
 
-// the trampoline
+// the app as an ofBaseApp
 
-/// Mirror of `ofzig_callbacks` in src/cpp/ofzig_app.cpp. Same order.
-pub const Callbacks = extern struct {
-    setup: ?PlainFn = null,
-    update: ?PlainFn = null,
-    draw: ?PlainFn = null,
-    exit: ?PlainFn = null,
-    key_pressed: ?EventFn(KeyEventArgs) = null,
-    key_released: ?EventFn(KeyEventArgs) = null,
-    mouse_moved: ?EventFn(MouseEventArgs) = null,
-    mouse_dragged: ?EventFn(MouseEventArgs) = null,
-    mouse_pressed: ?EventFn(MouseEventArgs) = null,
-    mouse_released: ?EventFn(MouseEventArgs) = null,
-    mouse_scrolled: ?EventFn(MouseEventArgs) = null,
-    mouse_entered: ?EventFn(MouseEventArgs) = null,
-    mouse_exited: ?EventFn(MouseEventArgs) = null,
-    window_resized: ?EventFn(ResizeEventArgs) = null,
-    drag_event: ?EventFn(DragInfo) = null,
-    got_message: ?EventFn(Message) = null,
-    touch_down: ?EventFn(TouchEventArgs) = null,
-    touch_moved: ?EventFn(TouchEventArgs) = null,
-    touch_up: ?EventFn(TouchEventArgs) = null,
-    touch_double_tap: ?EventFn(TouchEventArgs) = null,
-    touch_cancelled: ?EventFn(TouchEventArgs) = null,
-};
+/// The `ofBaseApp` `run` hands to oF for an app type `T`: a Zig subclass,
+/// with no C++ of its own, whose overrides call `T`'s methods. Only the
+/// methods `T` declares are overridden; every other slot keeps `ofBaseApp`'s
+/// own definition.
+///
+/// oF owns the app through a `shared_ptr` and deletes it when its main loop
+/// is torn down, which can be after `ofRunApp` returns. So the object is a
+/// static, one per app type, and the delete frees nothing.
+fn AppBase(comptime T: type) type {
+    return struct {
+        cpp: cpp.Subclass(BaseApp, @This(), "cpp"),
+        app: *T,
 
-const PlainFn = *const fn (*anyopaque) callconv(.c) void;
-fn EventFn(comptime Args: type) type {
-    return *const fn (*anyopaque, *const Args) callconv(.c) void;
+        const Self = @This();
+        var instance: Self = undefined;
+
+        pub const cpp_overrides = overrides(Self, T);
+
+        pub fn cpp_free(_: *Self) void {}
+    };
 }
 
-extern fn ofzig_app_new(cb: *const Callbacks, user: *anyopaque) *BaseApp;
-extern fn ofzig_callbacks_size() usize;
-
-/// Method name on the Zig type -> callback slot, for every slot.
-const plain_slots = .{
-    .{ "setup", "setup" },
-    .{ "update", "update" },
-    .{ "draw", "draw" },
-    .{ "exit", "exit" },
+/// The `ofBaseApp` virtual function each app method overrides: the
+/// overloads oF's events call, each with its argument by reference. `Args`
+/// is the event type, or null for the ones whose `ofEventArgs` carries
+/// nothing.
+const Slot = struct { sig: Signature, method: []const u8, Args: ?type };
+const slots = [_]Slot{
+    .{ .sig = BaseApp.setup_args_sig, .method = "setup", .Args = null },
+    .{ .sig = BaseApp.update_args_sig, .method = "update", .Args = null },
+    .{ .sig = BaseApp.draw_args_sig, .method = "draw", .Args = null },
+    .{ .sig = BaseApp.exit_args_sig, .method = "exit", .Args = null },
+    .{ .sig = BaseApp.keyPressed_sig, .method = "keyPressed", .Args = KeyEventArgs },
+    .{ .sig = BaseApp.keyReleased_sig, .method = "keyReleased", .Args = KeyEventArgs },
+    .{ .sig = BaseApp.mouseMoved_sig, .method = "mouseMoved", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mouseDragged_sig, .method = "mouseDragged", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mousePressed_sig, .method = "mousePressed", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mouseReleased_sig, .method = "mouseReleased", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mouseScrolled_sig, .method = "mouseScrolled", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mouseEntered_sig, .method = "mouseEntered", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.mouseExited_sig, .method = "mouseExited", .Args = MouseEventArgs },
+    .{ .sig = BaseApp.windowResized_sig, .method = "windowResized", .Args = ResizeEventArgs },
+    .{ .sig = BaseApp.dragged_sig, .method = "dragEvent", .Args = DragInfo },
+    .{ .sig = BaseApp.messageReceived_sig, .method = "gotMessage", .Args = Message },
+    .{ .sig = BaseApp.touchDown_sig, .method = "touchDown", .Args = TouchEventArgs },
+    .{ .sig = BaseApp.touchMoved_sig, .method = "touchMoved", .Args = TouchEventArgs },
+    .{ .sig = BaseApp.touchUp_sig, .method = "touchUp", .Args = TouchEventArgs },
+    .{ .sig = BaseApp.touchDoubleTap_sig, .method = "touchDoubleTap", .Args = TouchEventArgs },
+    .{ .sig = BaseApp.touchCancelled_sig, .method = "touchCancelled", .Args = TouchEventArgs },
 };
-const event_slots = .{
-    .{ "key_pressed", "keyPressed", KeyEventArgs },
-    .{ "key_released", "keyReleased", KeyEventArgs },
-    .{ "mouse_moved", "mouseMoved", MouseEventArgs },
-    .{ "mouse_dragged", "mouseDragged", MouseEventArgs },
-    .{ "mouse_pressed", "mousePressed", MouseEventArgs },
-    .{ "mouse_released", "mouseReleased", MouseEventArgs },
-    .{ "mouse_scrolled", "mouseScrolled", MouseEventArgs },
-    .{ "mouse_entered", "mouseEntered", MouseEventArgs },
-    .{ "mouse_exited", "mouseExited", MouseEventArgs },
-    .{ "window_resized", "windowResized", ResizeEventArgs },
-    .{ "drag_event", "dragEvent", DragInfo },
-    .{ "got_message", "gotMessage", Message },
-    .{ "touch_down", "touchDown", TouchEventArgs },
-    .{ "touch_moved", "touchMoved", TouchEventArgs },
-    .{ "touch_up", "touchUp", TouchEventArgs },
-    .{ "touch_double_tap", "touchDoubleTap", TouchEventArgs },
-    .{ "touch_cancelled", "touchCancelled", TouchEventArgs },
-};
 
-fn callbacksFor(comptime T: type) Callbacks {
-    var cbs: Callbacks = .{};
-    inline for (plain_slots) |slot| {
-        if (@hasDecl(T, slot[1])) @field(cbs, slot[0]) = plainCallback(T, slot[1]);
-    }
-    inline for (event_slots) |slot| {
-        if (@hasDecl(T, slot[1])) @field(cbs, slot[0]) = eventCallback(T, slot[1], slot[2]);
-    }
-    return cbs;
+/// `cpp_overrides` for `T`'s `AppBase`: a `.{ signature, method }` pair for
+/// each slot whose method `T` declares.
+fn overrides(comptime Shim: type, comptime T: type) Overrides(Shim, T) {
+    comptime var out: Overrides(Shim, T) = undefined;
+    comptime var i = 0;
+    inline for (slots) |s| if (@hasDecl(T, s.method)) {
+        out[i] = .{ s.sig, override(Shim, T, s) };
+        i += 1;
+    };
+    return out;
 }
 
-fn plainCallback(comptime T: type, comptime method: []const u8) PlainFn {
-    return &struct {
-        fn f(user: *anyopaque) callconv(.c) void {
-            if (comptime throws(T, method)) {
-                @field(T, method)(self(T, user)) catch |err|
-                    panicError(method, err, @errorReturnTrace());
-            } else {
-                @field(T, method)(self(T, user));
-            }
-        }
-    }.f;
+fn Overrides(comptime Shim: type, comptime T: type) type {
+    var pairs: []const type = &.{};
+    for (slots) |s| if (@hasDecl(T, s.method)) {
+        pairs = pairs ++ &[_]type{@Tuple(&.{ Signature, OverrideFn(Shim, s) })};
+    };
+    return @Tuple(pairs);
+}
+
+/// What the override takes: `cpp.bind`'s parameters for the slot, so the
+/// event by pointer.
+fn OverrideFn(comptime Shim: type, comptime s: Slot) type {
+    return fn (*Shim, *(s.Args orelse EventArgs)) void;
 }
 
 /// The Zig method receives a trivially copyable event by value, and a
 /// managed one (`DragInfo`, `Message`) by const pointer.
-fn eventCallback(comptime T: type, comptime method: []const u8, comptime Args: type) EventFn(Args) {
-    return &struct {
-        fn f(user: *anyopaque, args: *const Args) callconv(.c) void {
-            const by_ref = Args == DragInfo or Args == Message;
-            if (comptime throws(T, method)) {
-                if (by_ref)
-                    @field(T, method)(self(T, user), args) catch |err|
-                        panicError(method, err, @errorReturnTrace())
+fn override(comptime Shim: type, comptime T: type, comptime s: Slot) OverrideFn(Shim, s) {
+    return struct {
+        fn f(shim: *Shim, arg: *(s.Args orelse EventArgs)) void {
+            if (s.Args) |A| {
+                if (comptime A == DragInfo or A == Message)
+                    call(T, s.method, .{ shim.app, arg })
                 else
-                    @field(T, method)(self(T, user), args.*) catch |err|
-                        panicError(method, err, @errorReturnTrace());
+                    call(T, s.method, .{ shim.app, arg.* });
             } else {
-                if (by_ref) @field(T, method)(self(T, user), args) else @field(T, method)(self(T, user), args.*);
+                call(T, s.method, .{shim.app});
             }
         }
     }.f;
 }
 
-fn self(comptime T: type, user: *anyopaque) *T {
-    return @ptrCast(@alignCast(user));
+inline fn call(comptime T: type, comptime method: []const u8, args: anytype) void {
+    if (comptime throws(T, method)) {
+        @call(.auto, @field(T, method), args) catch |err| panicError(method, err, @errorReturnTrace());
+    } else {
+        @call(.auto, @field(T, method), args);
+    }
 }
 
 /// Whether an app method returns `!void` rather than `void`.

@@ -21,6 +21,7 @@
 //! oF headers. Nothing here declares how that build works.
 
 const std = @import("std");
+const cpp = @import("cpp_bindgen");
 
 pub const app = @import("app.zig");
 pub const camera = @import("camera.zig");
@@ -73,6 +74,8 @@ pub const FontLoadOptions = font.LoadOptions;
 pub const FontSettings = font.Settings;
 pub const UnicodeRange = font.UnicodeRange;
 pub const WindowMode = app.WindowMode;
+pub const BaseApp = app.BaseApp;
+pub const EventArgs = events.EventArgs;
 pub const RectMode = graphics.RectMode;
 pub const MatrixMode = graphics.MatrixMode;
 pub const DrawBitmapMode = graphics.DrawBitmapMode;
@@ -309,3 +312,14 @@ pub const cross = math.cross;
 /// compare. `==` on a `Vec2` is elementwise and yields a `@Vector(2, bool)`,
 /// and on a struct like `Color` or `Rectangle` it does not compile at all.
 pub const eql = std.meta.eql;
+
+// Extending an oF class from Zig, with no C++. A Zig struct holds a
+// `Subclass(Base, Self, "field")` field and lists its overrides in
+// `cpp_overrides`, keyed by the base's own signatures
+// (`of.Node.customDraw_sig`); C++ then calls them as it would a C++
+// subclass's. Inside an override, `bind(signature)` is the "super" call: the
+// base's definition, called directly. `bindVirtual` is the virtual call, the
+// one the wrappers here make for a virtual function. See `node.zig`.
+pub const Subclass = cpp.Subclass;
+pub const bind = cpp.bind;
+pub const bindVirtual = cpp.bindVirtual;

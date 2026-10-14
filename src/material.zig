@@ -21,8 +21,9 @@
 //! The PBR properties -- metallic, roughness, reflectance, clear coat --
 //! apply only under the programmable renderer, which `of.run` does not
 //! select; they are bound so a sketch that does can reach them. Textures
-//! and custom shaders are not bound, since `ofTexture` and `ofShader` are
-//! not.
+//! and custom shaders are not bound: `ofShader` and the renderer appear here
+//! only as opaque handles, because the material's virtual functions take
+//! them, and every virtual function is listed.
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
 const Ref = cpp.Ref;
@@ -46,9 +47,45 @@ const GlmVec4I = math.GlmVec4I;
 const Mat3 = matrix.Mat3;
 const Mat4 = matrix.Mat4;
 
+/// `ofShader`. Only ever a reference here, in the material's virtual
+/// functions; shaders themselves are not bound.
+pub const Shader = opaque {
+    pub const cpp_name = "ofShader";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
+/// `ofShadow`. Only ever a reference here.
+pub const Shadow = opaque {
+    pub const cpp_name = "ofShadow";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
+/// `ofGLProgrammableRenderer`, the renderer that calls a material's shader
+/// hooks. Only ever a reference here.
+pub const GLProgrammableRenderer = opaque {
+    pub const cpp_name = "ofGLProgrammableRenderer";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
+/// `std::shared_ptr<ofShader>`, which `setCustomShader` takes by value: the
+/// object pointer and the control block, as the MSVC STL lays them out.
+pub const SharedShader = extern struct {
+    _storage: [16]u8 align(8),
+
+    pub const cpp_template = cpp.Template{
+        .name = "std::shared_ptr",
+        .args = &.{.{ .type = Shader }},
+        .kind = .class,
+    };
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    /// Nothing here calls its members, so the glue need not emit them all.
+    pub const cpp_no_instantiate = true;
+};
+
 /// `ofBaseMaterial`, the interface `ofMaterial` implements: a vtable
-/// pointer and a `bound` flag. Abstract, so never constructed; it is here
-/// as the base `Material` declares, so the glue can check the relation.
+/// pointer and a `bound` flag. Abstract: a Zig subclass of it
+/// (`of.Subclass`) must override every pure virtual function below, as a
+/// C++ one must.
 pub const BaseMaterial = extern struct {
     _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
     _storage: [8]u8 align(8),
@@ -57,6 +94,56 @@ pub const BaseMaterial = extern struct {
     pub const cpp_kind: cpp.Kind = .class;
     pub const cpp_abi: cpp.ClassAbi = .managed_copy;
     pub const cpp_virtual_dtor = true;
+
+    const Self = BaseMaterial;
+    const Renderer = Ref(*GLProgrammableRenderer);
+    const ShaderRef = Ref(*const Shader);
+
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *Self };
+    pub const getDiffuseColor_sig: Signature = .{ .name = "getDiffuseColor", .this = *const Self, .ret = FloatColor, .pure = true };
+    pub const getAmbientColor_sig: Signature = .{ .name = "getAmbientColor", .this = *const Self, .ret = FloatColor, .pure = true };
+    pub const getSpecularColor_sig: Signature = .{ .name = "getSpecularColor", .this = *const Self, .ret = FloatColor, .pure = true };
+    pub const getEmissiveColor_sig: Signature = .{ .name = "getEmissiveColor", .this = *const Self, .ret = FloatColor, .pure = true };
+    pub const getShininess_sig: Signature = .{ .name = "getShininess", .this = *const Self, .ret = f32, .pure = true };
+    pub const begin_sig: Signature = .{ .name = "begin", .this = *const Self, .pure = true };
+    pub const end_sig: Signature = .{ .name = "end", .this = *const Self, .pure = true };
+    pub const hasDepthShader_sig: Signature = .{ .name = "hasDepthShader", .this = *const Self, .ret = bool, .virtual = true };
+    pub const getShadowDepthShader_sig: Signature = .{ .name = "getShadowDepthShader", .this = *const Self, .args = &.{ Ref(*const Shadow), Renderer }, .ret = ShaderRef, .pure = true };
+    pub const getShader_sig: Signature = .{ .name = "getShader", .this = *const Self, .args = &.{ i32, bool, Renderer }, .ret = ShaderRef, .pure = true };
+    pub const setCustomShader_sig: Signature = .{ .name = "setCustomShader", .this = *Self, .args = &.{SharedShader}, .pure = true };
+    pub const uploadMatrices_sig: Signature = .{ .name = "uploadMatrices", .this = *const Self, .args = &.{ ShaderRef, Renderer }, .virtual = true };
+    pub const updateMaterial_sig: Signature = .{ .name = "updateMaterial", .this = *const Self, .args = &.{ ShaderRef, Renderer }, .pure = true };
+    pub const updateLights_sig: Signature = .{ .name = "updateLights", .this = *const Self, .args = &.{ ShaderRef, Renderer }, .pure = true };
+    pub const updateShadows_sig: Signature = .{ .name = "updateShadows", .this = *const Self, .args = &.{ ShaderRef, Renderer }, .pure = true };
+    pub const updateEnvironmentMaps_sig: Signature = .{ .name = "updateEnvironmentMaps", .this = *const Self, .args = &.{ ShaderRef, Renderer }, .pure = true };
+    pub const isBound_sig: Signature = .{ .name = "isBound", .this = *const Self, .ret = bool, .virtual = true };
+    pub const bind_sig: Signature = .{ .name = "bind", .this = *const Self, .args = &.{Renderer}, .virtual = true, .access = .protected };
+    pub const unbind_sig: Signature = .{ .name = "unbind", .this = *const Self, .args = &.{Renderer}, .virtual = true, .access = .protected };
+
+    /// Every virtual function `ofMaterialBaseTypes.h` declares, in header
+    /// order.
+    pub const cpp_virtuals: []const Signature = &.{
+        dtor_sig,
+        getDiffuseColor_sig,
+        getAmbientColor_sig,
+        getSpecularColor_sig,
+        getEmissiveColor_sig,
+        getShininess_sig,
+        begin_sig,
+        end_sig,
+        hasDepthShader_sig,
+        getShadowDepthShader_sig,
+        getShader_sig,
+        setCustomShader_sig,
+        uploadMatrices_sig,
+        updateMaterial_sig,
+        updateLights_sig,
+        updateShadows_sig,
+        updateEnvironmentMaps_sig,
+        isBound_sig,
+        bind_sig,
+        unbind_sig,
+    };
 };
 
 /// `ofMaterial`.
@@ -93,11 +180,11 @@ pub const Material = extern struct {
     /// Applies the material to everything drawn until `end`.
     pub const begin_sig: Signature = .{ .name = "begin", .this = *const Material, .virtual = true };
     pub fn begin(self: *const Material) void {
-        cpp.bind(begin_sig)(self);
+        cpp.bindVirtual(begin_sig)(self);
     }
     pub const end_sig: Signature = .{ .name = "end", .this = *const Material, .virtual = true };
     pub fn end(self: *const Material) void {
-        cpp.bind(end_sig)(self);
+        cpp.bindVirtual(end_sig)(self);
     }
 
     // Phong colors
@@ -141,24 +228,65 @@ pub const Material = extern struct {
 
     pub const getDiffuseColor_sig: Signature = .{ .name = "getDiffuseColor", .this = *const Material, .ret = FloatColor, .virtual = true };
     pub fn getDiffuseColor(self: *const Material) FloatColor {
-        return cpp.bind(getDiffuseColor_sig)(self);
+        return cpp.bindVirtual(getDiffuseColor_sig)(self);
     }
     pub const getAmbientColor_sig: Signature = .{ .name = "getAmbientColor", .this = *const Material, .ret = FloatColor, .virtual = true };
     pub fn getAmbientColor(self: *const Material) FloatColor {
-        return cpp.bind(getAmbientColor_sig)(self);
+        return cpp.bindVirtual(getAmbientColor_sig)(self);
     }
     pub const getSpecularColor_sig: Signature = .{ .name = "getSpecularColor", .this = *const Material, .ret = FloatColor, .virtual = true };
     pub fn getSpecularColor(self: *const Material) FloatColor {
-        return cpp.bind(getSpecularColor_sig)(self);
+        return cpp.bindVirtual(getSpecularColor_sig)(self);
     }
     pub const getEmissiveColor_sig: Signature = .{ .name = "getEmissiveColor", .this = *const Material, .ret = FloatColor, .virtual = true };
     pub fn getEmissiveColor(self: *const Material) FloatColor {
-        return cpp.bind(getEmissiveColor_sig)(self);
+        return cpp.bindVirtual(getEmissiveColor_sig)(self);
     }
     pub const getShininess_sig: Signature = .{ .name = "getShininess", .this = *const Material, .ret = f32, .virtual = true };
     pub fn getShininess(self: *const Material) f32 {
-        return cpp.bind(getShininess_sig)(self);
+        return cpp.bindVirtual(getShininess_sig)(self);
     }
+
+    // The rest of `ofMaterial`'s virtual functions, the shader hooks the
+    // programmable renderer calls. `unbind` is protected and the six after
+    // it private, which MSVC mangles into their symbols; a Zig subclass can
+    // still override them, as a C++ one can.
+    const Renderer = Ref(*GLProgrammableRenderer);
+    const ShaderRef = Ref(*const Shader);
+    pub const hasDepthShader_sig: Signature = .{ .name = "hasDepthShader", .this = *const Material, .ret = bool, .virtual = true };
+    pub const uploadMatrices_sig: Signature = .{ .name = "uploadMatrices", .this = *const Material, .args = &.{ ShaderRef, Renderer }, .virtual = true };
+    pub const setCustomShader_sig: Signature = .{ .name = "setCustomShader", .this = *Material, .args = &.{SharedShader}, .virtual = true };
+    pub const unbind_sig: Signature = .{ .name = "unbind", .this = *const Material, .args = &.{Renderer}, .virtual = true, .access = .protected };
+    pub const getShadowDepthShader_sig: Signature = .{ .name = "getShadowDepthShader", .this = *const Material, .args = &.{ Ref(*const Shadow), Renderer }, .ret = ShaderRef, .virtual = true, .access = .private };
+    pub const getShader_sig: Signature = .{ .name = "getShader", .this = *const Material, .args = &.{ i32, bool, Renderer }, .ret = ShaderRef, .virtual = true, .access = .private };
+    pub const updateMaterial_sig: Signature = .{ .name = "updateMaterial", .this = *const Material, .args = &.{ ShaderRef, Renderer }, .virtual = true, .access = .private };
+    pub const updateLights_sig: Signature = .{ .name = "updateLights", .this = *const Material, .args = &.{ ShaderRef, Renderer }, .virtual = true, .access = .private };
+    pub const updateShadows_sig: Signature = .{ .name = "updateShadows", .this = *const Material, .args = &.{ ShaderRef, Renderer }, .virtual = true, .access = .private };
+    pub const updateEnvironmentMaps_sig: Signature = .{ .name = "updateEnvironmentMaps", .this = *const Material, .args = &.{ ShaderRef, Renderer }, .virtual = true, .access = .private };
+
+    /// Every virtual function `ofMaterial.h` declares, in header order. The
+    /// calls above are virtual (`cpp.bindVirtual`), so they reach a Zig
+    /// subclass's overrides, as the same calls in C++ would.
+    pub const cpp_virtuals: []const Signature = &.{
+        dtor_sig,
+        hasDepthShader_sig,
+        getDiffuseColor_sig,
+        getAmbientColor_sig,
+        getSpecularColor_sig,
+        getEmissiveColor_sig,
+        getShininess_sig,
+        begin_sig,
+        end_sig,
+        uploadMatrices_sig,
+        setCustomShader_sig,
+        unbind_sig,
+        getShadowDepthShader_sig,
+        getShader_sig,
+        updateMaterial_sig,
+        updateLights_sig,
+        updateShadows_sig,
+        updateEnvironmentMaps_sig,
+    };
 
     // PBR
 

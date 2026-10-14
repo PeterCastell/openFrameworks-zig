@@ -6,6 +6,14 @@ const Vec2 = math.Vec2;
 const GlmVec2 = math.GlmVec2;
 const String = @import("string.zig").String;
 
+/// `ofEventArgs`: the empty argument of the `setup`, `update`, `draw` and
+/// `exit` events, and the base of the other event types. Only ever passed by
+/// reference.
+pub const EventArgs = opaque {
+    pub const cpp_name = "ofEventArgs";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
 /// `ofKeyEventArgs`
 pub const KeyEventArgs = extern struct {
     type: Type,

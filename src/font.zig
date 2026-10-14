@@ -325,6 +325,8 @@ pub const Font = extern struct {
     pub fn deinit(self: *Font) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofTrueTypeFont` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     // loading
 

@@ -9,8 +9,8 @@
 //! - module `of`: the Zig side, built on cpp-bindgen.
 //! - artifact `openFrameworks`: a static library holding the oF core compiled
 //!   for the MSVC ABI, the C++ glue cpp-bindgen generates for the bindings,
-//!   the app trampoline, and the link lines for every third-party and system
-//!   library oF needs.
+//!   and the link lines for every third-party and system library oF needs.
+//!   There is no hand-written C++: an app is a Zig subclass of `ofBaseApp`.
 //!
 //! An end project does this:
 //!
@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
     });
     of_mod.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
 
-    // The C++ side: oF core + glue + trampoline, as one static library.
+    // The C++ side: oF core + glue, as one static library.
     const lib_mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -78,6 +78,21 @@ pub fn build(b: *std.Build) void {
     addExample(b, of_mod, target, optimize, "example", "example/main.zig", "example", "run", "the 2D example app");
     addExample(b, of_mod, target, optimize, "example-3d", "example/3d.zig", "example-3d", "run-3d", "the 3D example app");
     addExample(b, of_mod, target, optimize, "example-transforms", "example/transforms.zig", "example-transforms", "run-transforms", "the matrix and material example app");
+
+    // Tests of the bindings against the oF build itself: the vtable layouts
+    // they claim, and a Zig subclass of `ofBaseApp`. Linked like an example,
+    // with the dynamic CRT, but needing no window.
+    const tests_mod = b.createModule(.{
+        .root_source_file = b.path("test/vtables.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    tests_mod.addImport("of", of_mod);
+    tests_mod.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
+    const tests = b.addTest(.{ .name = "vtables", .root_module = tests_mod });
+    tests.linkage = .dynamic;
+    b.step("test", "Run the binding tests (needs -Dof-root)").dependOn(&b.addRunArtifact(tests).step);
 
     const glue_step = b.step("glue", "Write the generated C++ glue to zig-out/glue for inspection");
     glue_step.dependOn(&b.addInstallFile(glue, "glue/of_glue.cpp").step);
@@ -158,9 +173,6 @@ fn configureOf(
         .files = core_sources,
         .flags = cxx_flags,
     });
-
-    // The trampoline that turns ofBaseApp's virtual calls into C callbacks.
-    lib_mod.addCSourceFile(.{ .file = b.path("src/cpp/ofzig_app.cpp"), .flags = cxx_flags });
 
     // The glue cpp-bindgen generated from the bindings: it instantiates every
     // header-only entity the bindings name and static_asserts every layout

@@ -13,6 +13,31 @@
 //! places every base from the class's `cpp_bases`, and the glue asserts the
 //! relation against the real header. See `camera.zig` for the derived side.
 //!
+//! A Zig type can extend `ofNode`, or any class above, with no C++. It holds
+//! the C++ object as a field and lists its overrides by the base's
+//! signatures:
+//!
+//! ```zig
+//! const Beacon = struct {
+//!     cpp: of.Subclass(of.Node, Beacon, "cpp"),
+//!     radius: f32 = 8,
+//!
+//!     pub const cpp_overrides = .{.{ of.Node.customDraw_sig, customDraw }};
+//!
+//!     fn customDraw(self: *Beacon) void {
+//!         of.drawIcoSphere(self.radius);
+//!     }
+//! };
+//!
+//! var beacon: Beacon = .{ .cpp = undefined };   // a field of the app struct
+//! beacon.cpp.init();                            // ofNode(), then Beacon's vtable
+//! defer beacon.cpp.deinit();
+//! beacon.cpp.base.draw();   // the renderer applies the transform, then calls customDraw
+//! ```
+//!
+//! The override takes what `of.bind` would take for that signature, `this`
+//! aside, and `of.bind(signature)` inside it is the base's own definition.
+//!
 //! Every angle is radians and every orientation a `Quat`. oF's euler
 //! setters take degrees in glm's composition order, which is not the order
 //! `Transform` uses, so they are not bound; `setTransform` goes through the
@@ -376,11 +401,46 @@ pub const Node = extern struct {
         cpp.bind(resetTransform_sig)(self);
     }
 
-    /// `ofNode::draw()`: the node as a small white box with its axes. This is
-    /// `ofNode`'s own implementation, whatever a derived class would draw;
-    /// a primitive has its own `draw`.
+    /// `draw()`: a virtual call, so the node draws as what it really is. A
+    /// plain `ofNode` hands itself to the renderer, which applies its
+    /// transform and calls `customDraw`: by default a small box with its
+    /// axes. A primitive draws its mesh, a light or camera its gizmo, and a
+    /// Zig subclass whatever its `customDraw` override draws.
     pub const draw_sig: Signature = .{ .name = "draw", .this = *const Node, .virtual = true };
     pub fn draw(self: *const Node) void {
-        cpp.bind(draw_sig)(self);
+        cpp.bindVirtual(draw_sig)(self);
     }
+
+    // virtual functions: the ones a Zig subclass can override
+
+    /// `customDraw(const ofBaseRenderer*) const`: what `draw` calls, inside
+    /// the node's transform. By default it calls `customDraw()`, then draws
+    /// the small box and axes unless `customDraw()` is overridden.
+    pub const customDraw_renderer_sig: Signature = .{ .name = "customDraw", .this = *const Node, .args = &.{?*const BaseRenderer}, .virtual = true };
+    /// `customDraw()`: the drawing itself, in the node's own coordinates. The
+    /// one to override for a node that draws something of its own.
+    pub const customDraw_sig: Signature = .{ .name = "customDraw", .this = *Node, .virtual = true };
+    // The three hooks are protected, which MSVC mangles into their symbols.
+    // A Zig subclass overrides them, and its override can call the base's
+    // with `of.bind`; nothing else can call them.
+
+    /// Called after the position changes, by any setter.
+    pub const onPositionChanged_sig: Signature = .{ .name = "onPositionChanged", .this = *Node, .virtual = true, .access = .protected };
+    /// Called after the orientation changes, by any setter.
+    pub const onOrientationChanged_sig: Signature = .{ .name = "onOrientationChanged", .this = *Node, .virtual = true, .access = .protected };
+    /// Called after the scale changes, by any setter.
+    pub const onScaleChanged_sig: Signature = .{ .name = "onScaleChanged", .this = *Node, .virtual = true, .access = .protected };
+
+    /// Every virtual function `ofNode.h` declares, in header order.
+    /// cpp-bindgen computes the vtable from it, for the virtual calls here
+    /// and for a Zig subclass (`of.Subclass`).
+    pub const cpp_virtuals: []const Signature = &.{
+        dtor_sig,
+        customDraw_renderer_sig,
+        customDraw_sig,
+        draw_sig,
+        onPositionChanged_sig,
+        onOrientationChanged_sig,
+        onScaleChanged_sig,
+    };
 };

@@ -142,6 +142,8 @@ pub const OfRectangle = extern struct {
     pub fn deinit(self: *OfRectangle) void {
         cpp.bind(dtor_sig)(self);
     }
+    /// `ofRectangle` declares one virtual function: its destructor.
+    pub const cpp_virtuals: []const Signature = &.{dtor_sig};
 
     pub fn toRect(self: *const OfRectangle) Rectangle {
         return .fromOf(self.*);

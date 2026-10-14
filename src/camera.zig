@@ -217,7 +217,7 @@ pub const Camera = extern struct {
     /// through it.
     pub const begin_sig: Signature = .{ .name = "begin", .this = *Camera, .virtual = true };
     pub fn begin(self: *Camera) void {
-        cpp.bind(begin_sig)(self);
+        cpp.bindVirtual(begin_sig)(self);
     }
     /// `begin(const ofRectangle&)`: the same, into `viewport`.
     pub const begin_viewport_sig: Signature = .{ .name = "begin", .this = *Camera, .args = &.{Ref(*const OfRectangle)}, .virtual = true };
@@ -225,12 +225,17 @@ pub const Camera = extern struct {
         var tmp: OfRectangle = undefined;
         const p = viewport.stage(&tmp);
         defer tmp.deinit();
-        cpp.bind(begin_viewport_sig)(self, p);
+        cpp.bindVirtual(begin_viewport_sig)(self, p);
     }
     pub const end_sig: Signature = .{ .name = "end", .this = *Camera, .virtual = true };
     pub fn end(self: *Camera) void {
-        cpp.bind(end_sig)(self);
+        cpp.bindVirtual(end_sig)(self);
     }
+
+    /// Every virtual function `ofCamera.h` declares, in header order. The
+    /// calls above are virtual (`cpp.bindVirtual`), so on a `Camera` that is
+    /// really an `EasyCam` they reach `ofEasyCam`'s overrides, as in C++.
+    pub const cpp_virtuals: []const Signature = &.{ dtor_sig, begin_sig, begin_viewport_sig, end_sig };
 
     // matrices
 
@@ -349,22 +354,29 @@ pub const EasyCam = extern struct {
     /// time and remembering the viewport for it.
     pub const begin_sig: Signature = .{ .name = "begin", .this = *EasyCam, .virtual = true };
     pub fn begin(self: *EasyCam) void {
-        cpp.bind(begin_sig)(self);
+        cpp.bindVirtual(begin_sig)(self);
     }
     pub const begin_viewport_sig: Signature = .{ .name = "begin", .this = *EasyCam, .args = &.{Ref(*const OfRectangle)}, .virtual = true };
     pub fn beginViewport(self: *EasyCam, viewport: Rectangle) void {
         var tmp: OfRectangle = undefined;
         const p = viewport.stage(&tmp);
         defer tmp.deinit();
-        cpp.bind(begin_viewport_sig)(self, p);
+        cpp.bindVirtual(begin_viewport_sig)(self, p);
     }
-    /// `ofCamera::end()`, which `ofEasyCam` does not override: bound here
-    /// through the base so that `begin` and `end` sit together. `.class`
-    /// names the base and cpp-bindgen checks it is one.
+    /// `end()`, which `ofEasyCam` does not override: bound here through the
+    /// base so that `begin` and `end` sit together. `.class` names the base,
+    /// and the virtual call goes through its vtable.
     pub const end_sig: Signature = .{ .name = "end", .class = Camera, .this = *EasyCam, .virtual = true };
     pub fn end(self: *EasyCam) void {
-        cpp.bind(end_sig)(self);
+        cpp.bindVirtual(end_sig)(self);
     }
+
+    /// `ofEasyCam`'s override of `Node.onPositionChanged_sig`, which keeps
+    /// its orbit target in step. Protected, like the hook it overrides.
+    pub const onPositionChanged_sig: Signature = .{ .name = "onPositionChanged", .this = *EasyCam, .virtual = true, .access = .protected };
+    /// Every virtual function `ofEasyCam.h` declares, in header order. Its
+    /// destructor is implicit, so it is not declared and not listed.
+    pub const cpp_virtuals: []const Signature = &.{ begin_viewport_sig, begin_sig, onPositionChanged_sig };
 
     /// Back to the starting view: the target at the origin, the camera on
     /// +z at its distance, no rotation.

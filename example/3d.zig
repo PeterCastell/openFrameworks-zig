@@ -6,6 +6,9 @@
 //! The snake is a port of a classic first oF 3D sketch: each segment is a
 //! cylinder whose local frame is built from the direction to the previous
 //! segment, and pushed onto the matrix stack with `multMatrix`.
+//!
+//! The beacon above the box is a Zig subclass of `ofNode`: oF draws it, and
+//! calls back into its `customDraw`.
 const std = @import("std");
 const of = @import("of");
 
@@ -34,12 +37,28 @@ fn snakePos(index: u32) of.Vec3 {
     return of.Vec3{ @cos(angle), 0, @sin(angle) } * @as(of.Vec3, @splat(path_radius + slither));
 }
 
+/// A node that draws itself, written in Zig with no C++. `draw` hands the
+/// node to oF's renderer, which applies its transform (here, the box's too,
+/// since the box is its parent) and calls `customDraw`, the override below.
+const Beacon = struct {
+    cpp: of.Subclass(of.Node, Beacon, "cpp"),
+    radius: f32 = 8,
+
+    pub const cpp_overrides = .{.{ of.Node.customDraw_sig, customDraw }};
+
+    fn customDraw(self: *Beacon) void {
+        of.drawIcoSphere(self.radius);
+        of.drawAxis(self.radius * 3);
+    }
+};
+
 const App = struct {
     /// C++ constructs these in place in `setup` and destroys them in `exit`.
     /// None of them can be copied, so they live here.
     cam: of.EasyCam = undefined,
     box: of.BoxPrimitive = undefined,
     light: of.Light = undefined,
+    beacon: Beacon = .{ .cpp = undefined },
     /// A hand-built mesh: a fan of triangles on the ground.
     fan: of.Mesh = undefined,
     lit: bool = true,
@@ -54,6 +73,10 @@ const App = struct {
         self.box.init();
         self.box.set(60, 30, 60);
         self.box.node().setPosition(.{ 0, 15, 0 });
+
+        self.beacon.cpp.init();
+        self.beacon.cpp.base.setParent(self.box.node(), false);
+        self.beacon.cpp.base.setPosition(.{ 0, 40, 0 });
 
         self.light.init();
         self.light.setPointLight();
@@ -169,6 +192,9 @@ const App = struct {
         self.box.draw();
         self.box.node().pan(0.01);
 
+        of.setColor(of.Color.rgb(120, 200, 255));
+        self.beacon.cpp.base.draw();
+
         // The fan carries its own colors, so the current color does not apply.
         self.fan.draw();
     }
@@ -185,6 +211,8 @@ const App = struct {
     pub fn exit(self: *App) void {
         self.fan.deinit();
         self.light.deinit();
+        // The child first: a node's destructor unlinks it from its parent.
+        self.beacon.cpp.deinit();
         self.box.deinit();
         self.cam.deinit();
     }
