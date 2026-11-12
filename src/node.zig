@@ -40,7 +40,7 @@
 //!
 //! Every angle is radians and every orientation a `Quat`. oF's euler
 //! setters take degrees in glm's composition order, which is not the order
-//! `Transform` uses, so they are not bound; `setTransform` goes through the
+//! `Quat.fromEuler` uses, so they are not bound; `setOrientation` takes the
 //! quaternion, where neither question arises.
 const cpp = @import("cpp_bindgen");
 /// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
@@ -59,7 +59,6 @@ const Vec3 = math.Vec3;
 const GlmVec3 = math.GlmVec3;
 const Mat4 = matrix.Mat4;
 const Quat = matrix.Quat;
-const Transform = matrix.Transform;
 
 /// `ofBaseRenderer`, the renderer interface. Only ever a pointer here, and
 /// only ever null: `transformGL(null)` means the current renderer.
@@ -269,21 +268,6 @@ pub const Node = extern struct {
         const gp: GlmVec3 = .from(p);
         const gs: GlmVec3 = .from(s);
         cpp.bind(setPositionOrientationScale_sig)(self, &gp, &q, &gs);
-    }
-
-    /// All three of a `Transform` at once. `Transform.rotation` is euler in
-    /// this package's convention; it goes through the quaternion, so oF's
-    /// own euler order never enters.
-    pub fn setTransform(self: *Node, t: Transform) void {
-        self.setPositionOrientationScale(t.origin, t.quat(), t.scale);
-    }
-
-    /// The local transform as a `Transform`. See `Transform.setQuat` for
-    /// what a round trip through euler angles does and does not preserve.
-    pub fn getTransform(self: *const Node) Transform {
-        var t: Transform = .{ .origin = self.getPosition(), .scale = self.getScale() };
-        t.setQuat(self.getOrientation());
-        return t;
     }
 
     // modifiers

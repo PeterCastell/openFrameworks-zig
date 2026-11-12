@@ -93,6 +93,7 @@ pub fn build(b: *std.Build) void {
     addExample(b, of_mod, target, optimize, "example", "example/main.zig", "example", "run", "the 2D example app");
     addExample(b, of_mod, target, optimize, "example-3d", "example/3d.zig", "example-3d", "run-3d", "the 3D example app");
     addExample(b, of_mod, target, optimize, "example-transforms", "example/transforms.zig", "example-transforms", "run-transforms", "the matrix and material example app");
+    addExample(b, of_mod, target, optimize, "example-shaders", "example/shaders.zig", "example-shaders", "run-shaders", "the shader example app");
 
     // Tests of the bindings against the oF build itself: the vtable layouts
     // they claim, and a Zig subclass of `ofBaseApp`. Linked like an example,

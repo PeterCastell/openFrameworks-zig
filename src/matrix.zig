@@ -1,4 +1,4 @@
-//! glm matrices and quaternions, and the `Transform` that composes them.
+//! glm matrices and quaternions.
 //!
 //! Unlike the vectors, these have one spelling each, not two. The vector
 //! split exists because `@Vector` hands you `+` and `*` for free; a matrix
@@ -12,13 +12,14 @@
 //! `@Vector` columns rather than bound from glm — a 4x4 product is about
 //! sixteen vector instructions, which is cheaper than the call would be.
 //!
-//! Euler angles are **radians**, as yaw/pitch/roll:
+//! Euler angles (`Mat3.fromEuler`, `Quat.fromEuler`) are **radians**, as
+//! yaw/pitch/roll:
 //!
 //! | component | name | axis | |
 //! |---|---|---|---|
-//! | `rotation[0]` | pitch | X | right |
-//! | `rotation[1]` | yaw | Y | up |
-//! | `rotation[2]` | roll | Z | toward the viewer |
+//! | `[0]` | pitch | X | right |
+//! | `[1]` | yaw | Y | up |
+//! | `[2]` | roll | Z | toward the viewer |
 //!
 //! composed `Ry(yaw) * Rx(pitch) * Rz(roll)` — roll is applied first, then
 //! pitch, then yaw. That is the usual convention for a Y-up renderer, and
@@ -264,7 +265,7 @@ pub const Mat4 = extern struct {
     }
 
     /// The inverse of an affine matrix — one whose last row is `0 0 0 1`,
-    /// which everything built from a `Transform` is. A projection matrix is
+    /// which every `T * R * S` is. A projection matrix is
     /// not affine and needs a general inverse this does not provide.
     pub fn affineInverse(m: Mat4) Mat4 {
         const b = m.basis().inverse();
@@ -520,80 +521,5 @@ pub const Quat = extern struct {
         }
         const s = @sqrt(1.0 + c.z - a.x - b.y) * 2;
         return .{ .x = (c.x + a.z) / s, .y = (c.y + b.z) / s, .z = 0.25 * s, .w = (a.y - b.x) / s };
-    }
-};
-
-/// A position, an xyz euler rotation in radians, and a per-axis scale, kept
-/// as the three things a sketch actually edits rather than as the matrix
-/// they multiply out to. It is a plain Zig struct, not a C++ class, so its
-/// fields are `@Vector`s you can do arithmetic on directly.
-///
-/// `basis` and `matrix` compose the three; `setBasis` and `setMatrix` take
-/// them apart again. A decomposition is not always exact: shear cannot be
-/// represented at all, and at `rotation[0] = +-pi/2` the y and z angles trade
-/// off against each other, so a round trip preserves the *matrix* but need
-/// not preserve the *numbers*.
-pub const Transform = struct {
-    origin: Vec3 = @splat(0),
-    /// Radians: `.{ pitch, yaw, roll }` about X, Y and Z, composed
-    /// `Ry(yaw) * Rx(pitch) * Rz(roll)`.
-    rotation: Vec3 = @splat(0),
-    scale: Vec3 = @splat(1),
-
-    pub const identity: Transform = .{};
-
-    pub fn pitch(t: Transform) f32 {
-        return t.rotation[0];
-    }
-    pub fn yaw(t: Transform) f32 {
-        return t.rotation[1];
-    }
-    pub fn roll(t: Transform) f32 {
-        return t.rotation[2];
-    }
-
-    /// Rotation and scale together, as `R * S`: the rotation's columns each
-    /// scaled by the matching component.
-    pub fn basis(t: Transform) Mat3 {
-        const r = Mat3.fromEuler(t.rotation);
-        return .fromCols(
-            r.col(0) * @as(Vec3, @splat(t.scale[0])),
-            r.col(1) * @as(Vec3, @splat(t.scale[1])),
-            r.col(2) * @as(Vec3, @splat(t.scale[2])),
-        );
-    }
-
-    /// Splits `b` into a rotation and a scale, leaving `origin` alone. A
-    /// mirrored basis (negative determinant) puts the sign on `scale[0]`,
-    /// and an axis of zero length keeps the rotation it had.
-    pub fn setBasis(t: *Transform, b: Mat3) void {
-        var s: Vec3 = .{ math.length(b.col(0)), math.length(b.col(1)), math.length(b.col(2)) };
-        if (b.determinant() < 0) s[0] = -s[0];
-        t.scale = s;
-        if (s[0] == 0 or s[1] == 0 or s[2] == 0) return;
-        t.rotation = Mat3.fromCols(
-            b.col(0) / @as(Vec3, @splat(s[0])),
-            b.col(1) / @as(Vec3, @splat(s[1])),
-            b.col(2) / @as(Vec3, @splat(s[2])),
-        ).toEuler();
-    }
-
-    /// The whole thing, `T * R * S`, ready for `ofMultMatrix`.
-    pub fn matrix(t: Transform) Mat4 {
-        return .fromBasisOrigin(t.basis(), t.origin);
-    }
-
-    pub fn setMatrix(t: *Transform, m: Mat4) void {
-        t.origin = m.origin();
-        t.setBasis(m.basis());
-    }
-
-    /// The orientation on its own, without the scale.
-    pub fn quat(t: Transform) Quat {
-        return .fromEuler(t.rotation);
-    }
-
-    pub fn setQuat(t: *Transform, q: Quat) void {
-        t.rotation = q.toEuler();
     }
 };

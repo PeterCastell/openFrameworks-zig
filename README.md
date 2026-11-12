@@ -81,7 +81,9 @@ message handlers. `of.run` then starts the oF main loop. See
 [example/main.zig](example/main.zig) for the 2D calls and
 [example/3d.zig](example/3d.zig) for a camera, a primitive and a light, and
 [example/transforms.zig](example/transforms.zig) for matrices built by hand,
-a mesh transformed vertex by vertex, and a material.
+a mesh transformed vertex by vertex, and a material, and
+[example/shaders.zig](example/shaders.zig) for two GLSL programs compiled from
+source.
 
 ## 3D
 
@@ -275,32 +277,14 @@ column. `a.mul(b)` applies `b` first. This package writes the arithmetic in Zig
 over `@Vector` columns, and does not bind it from glm. A 4x4 product is
 approximately sixteen vector instructions, which costs less than a call.
 
-`of.Transform` contains the three values that a sketch changes:
-
-```zig
-var t: of.Transform = .{ .origin = .{ 100, 100, 0 }, .scale = @splat(2) };
-t.rotation[1] = of.getElapsedTime() * 0.7; // yaw, radians a second
-of.pushMatrix();
-of.multMatrix(t.matrix());
-// ... draw in the transform's space ...
-of.popMatrix();
-```
-
-`basis()` returns the rotation and the scale as a `Mat3`. `matrix()` returns the
-full `T * R * S` as a `Mat4`. `setBasis` and `setMatrix` decompose a matrix back
-into origin, rotation and scale.
-
-The decomposition is not always exact. A `Transform` cannot represent shear.
-Also, the code puts pitch into the range `[-pi/2, pi/2]`. Thus a round trip
-keeps the rotation, but it can change the numbers.
-
-Rotation is in radians, as yaw, pitch and roll:
+`Mat3.fromEuler` and `Quat.fromEuler` take euler angles in radians, as yaw,
+pitch and roll, and `toEuler` returns them the same way:
 
 | component | name | axis | axis direction |
 |---|---|---|---|
-| `rotation[0]` | pitch | X | right |
-| `rotation[1]` | yaw | Y | up |
-| `rotation[2]` | roll | Z | toward the viewer |
+| `[0]` | pitch | X | right |
+| `[1]` | yaw | Y | up |
+| `[2]` | roll | Z | toward the viewer |
 
 The composition is `Ry(yaw) * Rx(pitch) * Rz(roll)`. Roll occurs first, then
 pitch, then yaw. This is the usual convention for a Y-up renderer.
@@ -333,6 +317,36 @@ between the three.
 These types bind the matrix functions of `ofGraphics.h`: `ofLoadMatrix`,
 `ofMultMatrix`, `ofLoadViewMatrix`, `ofMultViewMatrix`, `ofLoadIdentityMatrix`,
 `ofSetMatrixMode`, and the four `ofGetCurrent*Matrix` queries.
+
+## Shaders
+
+`of.Shader` is `ofShader`. Compile it from GLSL in memory, or `load` the
+`.vert` and `.frag` files under `bin/data`, then bracket the draw calls with
+`begin` and `end`:
+
+```zig
+shader.init(); // in setup; deinit in exit
+_ = shader.setupShaderFromSource(.vertex, vert_src);
+_ = shader.setupShaderFromSource(.fragment, frag_src);
+_ = shader.linkProgram();
+
+shader.begin(); // in draw
+shader.setUniform1f("time", of.getElapsedTime());
+shader.setUniform3f("tint", .{ 1, 0.5, 0.2 });
+sphere.draw();
+shader.end();
+```
+
+`of.run` opens an OpenGL 2.1 context with the fixed-function renderer. Thus a
+shader is GLSL 1.20 (`#version 120`), and it reads the geometry of oF through
+the built-ins: `gl_Vertex`, `gl_Normal`, `gl_Color` and
+`gl_ModelViewProjectionMatrix`.
+
+The uniform setters take `Vec2`, `Vec3`, `Vec4`, `Mat3`, `Mat4` and
+`FloatColor`. The array setters (`setUniform3fv` and the others) take a slice of
+`GlmVec*`, as the bulk calls of `Mesh` do. Set a uniform between `begin` and
+`end`. A uniform that the program does not use is ignored. The texture uniforms
+are not bound, because textures are not bound yet.
 
 ## Rectangles
 
@@ -410,9 +424,10 @@ the methods of those types, and its free functions:
 | `graphics.zig` | The immediate-mode drawing calls of `ofGraphics.h`. |
 | `font.zig` | `ofTrueTypeFont`: loading a face, measuring a string, drawing one. Also `ofTrueTypeFontSettings` and the `ofUnicode` ranges. |
 | `color.zig`, `math.zig`, `rectangle.zig`, `string.zig` | `Color`, `glm::vec*` (float, `int`, `unsigned`) and `ofMath.h`, `ofRectangle`, and the `std::string`, `std::wstring` and `std::filesystem::path` that oF calls take. |
-| `matrix.zig` | `glm::mat3`, `glm::mat4`, `glm::quat`, and the `Transform` that composes them. |
+| `matrix.zig` | `glm::mat3`, `glm::mat4` and `glm::quat`. |
 | `node.zig`, `camera.zig`, `primitives.zig`, `mesh.zig`, `light.zig`, `graphics3d.zig` | `ofNode`, `ofCamera` and `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`, `ofLight` and the lighting switches, and the immediate-mode solids of `of3dGraphics.h`. |
 | `material.zig` | `ofMaterial`: the Phong colors and shininess, the PBR scalars, and the custom uniforms. |
+| `shader.zig` | `ofShader`: compiling and linking a GLSL program, and setting its uniforms and attributes. |
 | `events.zig` | The event-argument types and the key, modifier and mouse-button constants. |
 | `of.zig` | Re-exports everything flat, and is the root the glue scan starts from. |
 
@@ -515,9 +530,10 @@ That is where oF looks on Windows.
 - **Coverage.** The app lifecycle and events, the 2D drawing calls in
   `ofGraphics.h`, the 3D ones in `of3dGraphics.h` and `of3dUtils.h`, `ofNode`,
   `ofCamera`, `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`,
-  `ofLight`, `ofMaterial`, TrueType text, colors, `ofRectangle`, the math helpers, and
-  `std::string`. The sound, video, image, texture and shader classes are not
-  bound. To add any other oF function, write one `Signature`. The glue
+  `ofLight`, `ofMaterial`, `ofShader`, TrueType text, colors, `ofRectangle`, the
+  math helpers, and `std::string`. The sound, video, image and texture classes
+  are not bound, nor is the programmable renderer: `of.run` always opens an
+  OpenGL 2.1 context. To add any other oF function, write one `Signature`. The glue
   reports an error if that signature is incorrect.
 - **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name
   longer than 512 UTF-16 code units (Windows) or 512 bytes (macOS) does not

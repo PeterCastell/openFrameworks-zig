@@ -38,6 +38,7 @@ pub const mesh = @import("mesh.zig");
 pub const node = @import("node.zig");
 pub const primitives = @import("primitives.zig");
 pub const rectangle = @import("rectangle.zig");
+pub const shader = @import("shader.zig");
 pub const string = @import("string.zig");
 
 // Types.
@@ -62,7 +63,6 @@ pub const GlmVec4U = math.GlmVec4U;
 pub const Mat3 = matrix.Mat3;
 pub const Mat4 = matrix.Mat4;
 pub const Quat = matrix.Quat;
-pub const Transform = matrix.Transform;
 pub const Color = color.Color;
 pub const FloatColor = color.FloatColor;
 pub const ShortColor = color.ShortColor;
@@ -109,6 +109,9 @@ pub const Light = light.Light;
 pub const LightType = light.LightType;
 pub const Material = material.Material;
 pub const BaseMaterial = material.BaseMaterial;
+pub const Shader = shader.Shader;
+pub const ShaderStage = shader.Stage;
+pub const GeometryPrimitive = shader.GeometryPrimitive;
 pub const GridOptions = graphics3d.GridOptions;
 
 // App, window, frames, input.

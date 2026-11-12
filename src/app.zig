@@ -242,7 +242,8 @@ pub const ofSetDataPathRoot_sig: Signature = .{ .name = "ofSetDataPathRoot", .ar
 /// which is where it looks on Windows. A sketch's own `ofSetDataPathRoot` in
 /// `setup` still wins, since this runs first.
 fn useDataBesideExe() void {
-    var dir = cpp.bind(getCurrentExeDir_sig)();
+    var dir: String = undefined;
+    cpp.bind(getCurrentExeDir_sig)(&dir);
     defer dir.deinit();
     const exe_dir = dir.slice();
     const sep = if (std.mem.endsWith(u8, exe_dir, "/")) "" else "/";

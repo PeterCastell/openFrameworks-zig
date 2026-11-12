@@ -21,9 +21,11 @@
 //! The PBR properties -- metallic, roughness, reflectance, clear coat --
 //! apply only under the programmable renderer, which `of.run` does not
 //! select; they are bound so a sketch that does can reach them. Textures
-//! and custom shaders are not bound: `ofShader` and the renderer appear here
-//! only as opaque handles, because the material's virtual functions take
-//! them, and every virtual function is listed.
+//! and a material's custom shader are not bound: the renderer appears here
+//! only as an opaque handle, and `ofShader` only by reference, because the
+//! material's virtual functions take them, and every virtual function is
+//! listed. A `Shader` of your own (`shader.zig`) can still shade a mesh
+//! directly, without a material.
 const cpp = @import("cpp_bindgen");
 /// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS):
 /// the opaque storage sizes below differ between them.
@@ -50,12 +52,9 @@ const GlmVec4I = math.GlmVec4I;
 const Mat3 = matrix.Mat3;
 const Mat4 = matrix.Mat4;
 
-/// `ofShader`. Only ever a reference here, in the material's virtual
-/// functions; shaders themselves are not bound.
-pub const Shader = opaque {
-    pub const cpp_name = "ofShader";
-    pub const cpp_kind: cpp.Kind = .class;
-};
+/// `ofShader`, which the material's shader hooks take by reference. The
+/// binding itself is `shader.zig`.
+pub const Shader = @import("shader.zig").Shader;
 
 /// `ofShadow`. Only ever a reference here.
 pub const Shadow = opaque {
