@@ -196,4 +196,54 @@ pub const Path = extern struct {
     pub fn deinit(self: *Path) void {
         cpp.bind(dtor_sig)(self);
     }
+
+    /// `ofPathToString(const of::filesystem::path&)`, which converts as
+    /// oF's own code does when it prints or compares a path.
+    pub const ofPathToString_sig: Signature = .{ .name = "ofPathToString", .args = &.{cpp.Ref(*const Path)}, .ret = String };
+    /// The path as a `String`, which the caller owns and must `deinit`.
+    pub fn toString(self: *const Path) String {
+        var s: String = undefined;
+        cpp.bind(ofPathToString_sig)(&s, self);
+        return s;
+    }
+};
+
+/// `std::vector<std::string>`, as oF returns one by value: a list of names
+/// the caller owns. `deinit` frees the strings and the array together.
+///
+/// ```zig
+/// var names = model.getMeshNames();
+/// defer names.deinit();
+/// for (names.items()) |*n| std.debug.print("{s}\n", .{n.slice()});
+/// ```
+pub const StringVector = extern struct {
+    /// Begin, end, and the end of the allocation: the same three pointers
+    /// in the MSVC STL and in libc++.
+    _first: ?[*]String,
+    _last: ?[*]String,
+    _end: ?[*]String,
+
+    pub const cpp_template: cpp.Template = .{
+        .name = "std::vector",
+        .args = &.{
+            .{ .type = String },
+            .{ .template = .{ .name = "std::allocator", .args = &.{.{ .type = String }}, .kind = .class } },
+        },
+        .kind = .class,
+    };
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    /// See `String.cpp_no_instantiate`; the one member called is the
+    /// destructor, which the glue forces on its own.
+    pub const cpp_no_instantiate = true;
+    pub const cpp_no_offsets = true;
+
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *StringVector };
+    pub fn deinit(self: *StringVector) void {
+        cpp.bind(dtor_sig)(self);
+    }
+
+    pub fn items(self: *const StringVector) []const String {
+        const first = self._first orelse return &.{};
+        return first[0 .. self._last.? - first];
+    }
 };

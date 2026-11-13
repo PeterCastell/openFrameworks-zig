@@ -38,8 +38,8 @@ jobs:
       # -j1: two Zig compilations at once can fail spuriously with
       # "unable to load"; the build fans out into several.
       - name: Test and build the examples (aarch64-macos)
-        run: zig build test example example-3d example-transforms -j1 --summary all -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"
+        run: zig build test example example-3d example-transforms example-model -j1 --summary all -Dassimp -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"
       - name: Check Rosetta
         run: arch -x86_64 /usr/bin/true || { echo "::error::Rosetta 2 is not installed on this runner"; exit 1; }
       - name: Test and build the examples (x86_64-macos, under Rosetta)
-        run: zig build test example example-3d example-transforms -j1 --summary all -Dtarget=x86_64-macos -frosetta -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"
+        run: zig build test example example-3d example-transforms example-model -j1 --summary all -Dassimp -Dtarget=x86_64-macos -frosetta -Dof-root="$PWD/of_v${OF_VERSION}_osx_release"

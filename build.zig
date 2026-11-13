@@ -28,6 +28,11 @@
 //! // CRT, like every oF build there; on macOS it is the only kind there is.
 //! const exe = b.addExecutable(.{ .name = "app", .root_module = exe_mod, .linkage = .dynamic });
 //! ```
+//!
+//! Addons from the release's `addons/` folder are opt-in, one option each,
+//! as a project generator's `addons.make` would list them. The one bound
+//! so far is `ofxAssimpModelLoader`: `.assimp = true` builds it, links the
+//! release's assimp, and makes `of.assimp` available.
 const std = @import("std");
 const builtin = @import("builtin");
 const cpp_bindgen = @import("cpp_bindgen");
@@ -46,6 +51,16 @@ pub fn build(b: *std.Build) void {
         b.graph.environ_map.get("OF_ROOT") orelse
         "";
     const winrt_include = b.option([]const u8, "winrt-include", "Windows SDK 'winrt' include directory (auto-detected when omitted)");
+    // Addons are opt-in, as in oF's own projects: the glue references every
+    // function it binds, so an addon that is built is linked into every
+    // executable, used or not.
+    const addons: Addons = .{
+        .assimp = b.option(bool, "assimp", "Build the ofxAssimpModelLoader addon (of.assimp) and link the release's assimp") orelse false,
+    };
+    const options = b.addOptions();
+    options.addOption(bool, "assimp", addons.assimp);
+    // One module for every importer: the same file cannot root two.
+    const options_mod = options.createModule();
 
     const dep = b.dependency("cpp_bindgen", .{ .target = target, .optimize = optimize });
 
@@ -56,6 +71,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     of_mod.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
+    of_mod.addImport("of_options", options_mod);
 
     // The C++ side: oF core + glue, as one static library.
     const lib_mod = b.createModule(.{
@@ -74,8 +90,8 @@ pub fn build(b: *std.Build) void {
     // it. Generating needs no oF headers -- only compiling does -- so the
     // `glue` step still works without `-Dof-root`.
     const glue = cpp_bindgen.generateCppGlue(b, dep, .{
-        .binding_module = bindingsModule(b, dep, target),
-        .headers = glue_headers,
+        .binding_module = bindingsModule(b, dep, target, options_mod),
+        .headers = if (addons.assimp) glue_headers ++ assimp_glue_headers else glue_headers,
         .target = target,
         .name = "of-glue",
     });
@@ -83,7 +99,7 @@ pub fn build(b: *std.Build) void {
     if (of_root.len == 0) {
         lib.step.dependOn(&b.addFail("openframeworks_zig: pass -Dof-root=<path to of_v0.12.x_vs_64_release or of_v0.12.x_osx_release> or set OF_ROOT").step);
     } else {
-        configureOf(b, of_mod, lib_mod, target, of_root, winrt_include, glue);
+        configureOf(b, of_mod, lib_mod, target, of_root, winrt_include, glue, addons);
     }
     b.installArtifact(lib);
     of_mod.linkLibrary(lib);
@@ -94,6 +110,13 @@ pub fn build(b: *std.Build) void {
     addExample(b, of_mod, target, optimize, "example-3d", "example/3d.zig", "example-3d", "run-3d", "the 3D example app");
     addExample(b, of_mod, target, optimize, "example-transforms", "example/transforms.zig", "example-transforms", "run-transforms", "the matrix and material example app");
     addExample(b, of_mod, target, optimize, "example-shaders", "example/shaders.zig", "example-shaders", "run-shaders", "the shader example app");
+    if (addons.assimp) {
+        addExample(b, of_mod, target, optimize, "example-model", "example/model.zig", "example-model", "run-model", "the ofxAssimpModelLoader example app (-Dassimp)");
+    } else {
+        const fail = &b.addFail("openframeworks_zig: the model example needs the ofxAssimpModelLoader addon; pass -Dassimp").step;
+        b.step("example-model", "Build the ofxAssimpModelLoader example app (-Dassimp)").dependOn(fail);
+        b.step("run-model", "Run the ofxAssimpModelLoader example app (-Dassimp)").dependOn(fail);
+    }
 
     // Tests of the bindings against the oF build itself: the vtable layouts
     // they claim, and a Zig subclass of `ofBaseApp`. Linked like an example,
@@ -106,6 +129,7 @@ pub fn build(b: *std.Build) void {
     });
     tests_mod.addImport("of", of_mod);
     tests_mod.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
+    tests_mod.addImport("of_options", options_mod);
     const tests = b.addTest(.{ .name = "vtables", .root_module = tests_mod });
     tests.linkage = .dynamic;
     b.step("test", "Run the binding tests (needs -Dof-root)").dependOn(&b.addRunArtifact(tests).step);
@@ -139,8 +163,16 @@ fn addExample(
 
     const run = b.addRunArtifact(exe);
     run.setCwd(b.path("example"));
+    // `zig build run-model -- file.gltf`
+    run.addPassthruArgs();
     b.step(run_step, b.fmt("Run {s}", .{what})).dependOn(&run.step);
 }
+
+/// The addons of the release that are built, each one a `-D` option and a
+/// field of the `of_options` module that `src/of.zig` reads.
+const Addons = struct {
+    assimp: bool,
+};
 
 /// The platforms there is an oF release for and a link line here.
 const Platform = enum {
@@ -163,6 +195,7 @@ fn configureOf(
     of_root: []const u8,
     winrt_include: ?[]const u8,
     glue: std.Build.LazyPath,
+    addons: Addons,
 ) void {
     const platform = Platform.of(target.result) orelse {
         lib_mod.owner.getInstallStep().dependOn(&b.addFail("openframeworks_zig: the supported targets are x86_64-windows-msvc (oF's vs_64 release) and aarch64-macos or x86_64-macos (oF's osx release)").step);
@@ -177,6 +210,7 @@ fn configureOf(
         .windows => configureWindows(b, of_mod, lib_mod, libs, winrt_include),
         .macos => configureMacos(b, of_mod, lib_mod, libs, of_root),
     };
+    if (addons.assimp) configureAssimp(b, of_mod, lib_mod, of.path(b, "addons/ofxAssimpModelLoader"), platform, cxx_flags);
 
     // The glue cpp-bindgen generated from the bindings: it instantiates every
     // header-only entity the bindings name and static_asserts every layout
@@ -284,6 +318,56 @@ fn configureMacos(
     for (macos_system_libs) |name| of_mod.linkSystemLibrary(name, .{});
     return cxx_flags;
 }
+
+/// The `ofxAssimpModelLoader` addon, which every oF release ships under
+/// `addons/`: its four translation units, compiled like the core, and the
+/// release's prebuilt assimp, linked as its `addon_config.mk` says. On
+/// Windows that is `lib/vs/x64/Release/libassimp.lib`, a static /MD build
+/// whose one dependency, zlib, the core already links; on macOS the static
+/// library inside `assimp.xcframework`, whose headers the makefile takes
+/// from the framework rather than `libs/assimp/include`. A release that
+/// lacks one of those include directories has the other; one that does not
+/// exist is not searched.
+///
+/// oF's Windows `libassimp.lib` was compiled with `/Zi`, so its objects
+/// name a PDB that existed only on the machine that built it. A Debug link
+/// prints LLD's LNK4099 warning for each object it uses, and the build
+/// summary marks the step, but the link succeeds and the executable is
+/// complete: the warning only means assimp's own frames have no symbols.
+fn configureAssimp(
+    b: *std.Build,
+    of_mod: *std.Build.Module,
+    lib_mod: *std.Build.Module,
+    addon: std.Build.LazyPath,
+    platform: Platform,
+    cxx_flags: []const []const u8,
+) void {
+    const assimp = addon.path(b, "libs/assimp");
+    const xcframework = assimp.path(b, "lib/macos/assimp.xcframework/macos-arm64_x86_64");
+    lib_mod.addIncludePath(addon.path(b, "src"));
+    if (platform == .macos) lib_mod.addIncludePath(xcframework.path(b, "Headers"));
+    lib_mod.addIncludePath(assimp.path(b, "include"));
+
+    lib_mod.addCSourceFiles(.{ .root = addon.path(b, "src"), .files = assimp_sources, .flags = cxx_flags, .language = .cpp });
+
+    // See `configureWindows` for why link inputs go on the `of` module.
+    switch (platform) {
+        .windows => {
+            of_mod.addLibraryPath(assimp.path(b, "lib/vs/x64/Release"));
+            of_mod.linkSystemLibrary("libassimp", .{ .preferred_link_mode = .static });
+        },
+        .macos => of_mod.addObjectFile(xcframework.path(b, "assimp.a")),
+    }
+}
+
+/// `addons/ofxAssimpModelLoader/src`, all of it. `ofxAssimpUtils.h` is
+/// header-only.
+const assimp_sources = &[_][]const u8{
+    "ofxAssimpAnimation.cpp",
+    "ofxAssimpMeshHelper.cpp",
+    "ofxAssimpModelLoader.cpp",
+    "ofxAssimpTexture.cpp",
+};
 
 /// Every `libs/<name>/lib/osx/*.a` of the release, as oF's makefiles find
 /// them, but for the core's own (`openFrameworksCompiled`), which this
@@ -498,14 +582,18 @@ const system_libs = [_][]const u8{
 
 /// `ofMain.h` includes every oF header, so the glue needs no other.
 const glue_headers: []const []const u8 = &.{"ofMain.h"};
+/// The addon's main header includes the rest of the addon and the assimp
+/// headers it needs.
+const assimp_glue_headers: []const []const u8 = &.{"ofxAssimpModelLoader.h"};
 
 /// The root of the glue scan. The generator is its own compilation, so it
 /// gets its own module object for `src/of.zig` rather than the public `of`
 /// module: that one links the library the glue is compiled into, which would
 /// be a dependency loop.
-fn bindingsModule(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.ResolvedTarget) *std.Build.Module {
+fn bindingsModule(b: *std.Build, dep: *std.Build.Dependency, target: std.Build.ResolvedTarget, options: *std.Build.Module) *std.Build.Module {
     const bindings = b.createModule(.{ .root_source_file = b.path("src/of.zig"), .target = target });
     bindings.addImport("cpp_bindgen", dep.module("cpp_bindgen"));
+    bindings.addImport("of_options", options);
     return bindings;
 }
 

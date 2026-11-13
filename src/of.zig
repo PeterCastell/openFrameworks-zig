@@ -22,8 +22,15 @@
 
 const std = @import("std");
 const cpp = @import("cpp_bindgen");
+/// What `build.zig` was asked to build: the addons, one flag each.
+const options = @import("of_options");
 
 pub const app = @import("app.zig");
+/// The ofxAssimpModelLoader addon, built with `-Dassimp` (`.assimp = true`
+/// on the dependency). Without it this is empty, and nothing of the addon
+/// is compiled or linked.
+pub const assimp = if (options.assimp) @import("assimp.zig") else struct {};
+pub const buffer = @import("buffer.zig");
 pub const camera = @import("camera.zig");
 pub const color = @import("color.zig");
 pub const events = @import("events.zig");
@@ -40,6 +47,7 @@ pub const primitives = @import("primitives.zig");
 pub const rectangle = @import("rectangle.zig");
 pub const shader = @import("shader.zig");
 pub const string = @import("string.zig");
+pub const texture = @import("texture.zig");
 
 // Types.
 pub const Vec2 = math.Vec2;
@@ -113,6 +121,12 @@ pub const Shader = shader.Shader;
 pub const ShaderStage = shader.Stage;
 pub const GeometryPrimitive = shader.GeometryPrimitive;
 pub const GridOptions = graphics3d.GridOptions;
+pub const Texture = texture.Texture;
+pub const BaseDraws = texture.BaseDraws;
+pub const Buffer = buffer.Buffer;
+pub const BlendMode = graphics.BlendMode;
+pub const LoopType = graphics.LoopType;
+pub const StringVector = string.StringVector;
 
 // App, window, frames, input.
 pub const run = app.run;

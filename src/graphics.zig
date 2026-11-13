@@ -30,6 +30,33 @@ const rectangle = @import("rectangle.zig");
 const Rectangle = rectangle.Rectangle;
 const OfRectangle = rectangle.OfRectangle;
 
+/// `ofBlendMode`: how what is drawn combines with what is already there.
+pub const BlendMode = enum(i32) {
+    disabled = 0,
+    alpha = 1,
+    add = 2,
+    subtract = 3,
+    multiply = 4,
+    screen = 5,
+    max = 6,
+    min = 7,
+    pub const cpp_name = "ofBlendMode";
+    pub const cpp_kind: cpp.Kind = .@"enum";
+};
+
+/// `ofLoopType` (ofVideoBaseTypes.h): how a video or an animation carries
+/// on past its end. A `short` underneath.
+pub const LoopType = enum(i16) {
+    /// Plays once and stops at the end.
+    none = 0x01,
+    /// Forwards, then backwards, and again.
+    palindrome = 0x02,
+    /// From the start again.
+    normal = 0x03,
+    pub const cpp_name = "ofLoopType";
+    pub const cpp_kind: cpp.Kind = .@"enum";
+};
+
 /// `ofRectMode`
 pub const RectMode = enum(i32) {
     corner = 0,

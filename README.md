@@ -83,7 +83,8 @@ message handlers. `of.run` then starts the oF main loop. See
 [example/transforms.zig](example/transforms.zig) for matrices built by hand,
 a mesh transformed vertex by vertex, and a material, and
 [example/shaders.zig](example/shaders.zig) for two GLSL programs compiled from
-source.
+source, and [example/model.zig](example/model.zig) for a 3D model loaded
+through the ofxAssimpModelLoader addon.
 
 ## 3D
 
@@ -346,7 +347,56 @@ The uniform setters take `Vec2`, `Vec3`, `Vec4`, `Mat3`, `Mat4` and
 `FloatColor`. The array setters (`setUniform3fv` and the others) take a slice of
 `GlmVec*`, as the bulk calls of `Mesh` do. Set a uniform between `begin` and
 `end`. A uniform that the program does not use is ignored. The texture uniforms
-are not bound, because textures are not bound yet.
+are not bound yet.
+
+## Models: the ofxAssimpModelLoader addon
+
+Every oF release ships the `ofxAssimpModelLoader` addon and a prebuilt assimp
+under `addons/`. As in an oF project, an addon is opt-in. Pass `-Dassimp`, or
+`.assimp = true` to the dependency, and the build compiles the addon's four
+`.cpp` files, links the release's assimp, and fills in `of.assimp`:
+
+```zig
+const of_dep = b.dependency("openframeworks_zig", .{
+    .target = target,
+    .optimize = optimize,
+    .@"of-root" = @as([]const u8, "C:/path/to/of_v0.12.1_vs_64_release"),
+    .assimp = true,
+});
+```
+
+```zig
+model: of.assimp.ModelLoader = undefined, // a field of the app
+
+// setup
+self.model.init(); // deinit in exit
+_ = self.model.load("Fox/Fox_05.fbx", .optimize_default);
+self.model.playAllAnimations();
+
+// update
+self.model.update(); // advances the animations and re-skins the meshes
+
+// draw, inside a camera, with depth testing on
+self.model.drawFaces();
+```
+
+All four classes of the addon are bound: `ModelLoader`, `Animation`,
+`MeshHelper`, whose public members are fields with their C++ names and
+offsets checked by the glue, and `AssimpTexture`. `load` takes one of the
+addon's presets (`.optimize_none`, `.optimize_default`, `.optimize_high`) or
+an exact set of assimp post-processing steps, `.steps(.{ .triangulate = true,
+... })`. `loadMemory` loads from bytes, `@embedFile` included. The copies
+the loader returns by value (`getMesh`, `getMaterialForMesh`,
+`getTextureForMesh`) run their constructor on storage you pass, so they are
+built where they will live. The deprecated calls are left out.
+
+The addon needs `of.Texture` (`ofTexture`, with its `ofBaseDraws` interface)
+and `of.Buffer` (`ofBuffer`), which are core oF and always present.
+
+On Windows, a Debug link with the addon prints LLD's warning LNK4099 for
+each assimp object, and the build summary marks the step. The link succeeds:
+oF's `libassimp.lib` names a PDB that existed only on the machine that built
+it, so assimp's own frames have no symbols.
 
 ## Rectangles
 
@@ -398,6 +448,12 @@ On a Mac, the same with the osx release:
 
 ```bash
 zig build run -Dof-root=/path/to/of_v0.12.1_osx_release
+```
+
+The model example needs the addon, and takes any file assimp reads:
+
+```bash
+zig build run-model -Dassimp -Dof-root=C:/path/to/of_v0.12.1_vs_64_release -- path/to/model.gltf
 ```
 
 An Intel build also runs on Apple Silicon, under Rosetta:
@@ -530,9 +586,10 @@ That is where oF looks on Windows.
 - **Coverage.** The app lifecycle and events, the 2D drawing calls in
   `ofGraphics.h`, the 3D ones in `of3dGraphics.h` and `of3dUtils.h`, `ofNode`,
   `ofCamera`, `ofEasyCam`, the six `of3dPrimitives.h` shapes, `ofMesh`,
-  `ofLight`, `ofMaterial`, `ofShader`, TrueType text, colors, `ofRectangle`, the
-  math helpers, and `std::string`. The sound, video, image and texture classes
-  are not bound, nor is the programmable renderer: `of.run` always opens an
+  `ofLight`, `ofMaterial`, `ofShader`, `ofTexture`, `ofBuffer`, TrueType text,
+  colors, `ofRectangle`, the math helpers, `std::string`, and the
+  ofxAssimpModelLoader addon. The sound, video, image and pixel classes are
+  not bound, nor is the programmable renderer: `of.run` always opens an
   OpenGL 2.1 context. To add any other oF function, write one `Signature`. The glue
   reports an error if that signature is incorrect.
 - **Paths.** A `std::filesystem::path` is built from a fixed buffer, so a name

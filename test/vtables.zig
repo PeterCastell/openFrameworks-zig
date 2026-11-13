@@ -15,6 +15,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const cpp = @import("cpp_bindgen");
 const of = @import("of");
+/// Which addons the build has, for the tests that need one.
+const options = @import("of_options");
 
 const msvc = builtin.target.abi == .msvc;
 
@@ -145,6 +147,116 @@ test "mesh, material, font and rectangle layouts match clang's" {
     try expectLayout(of.OfRectangle, d(of.OfRectangle));
 }
 
+/// A group of overloads as the header declares them, in their slot order:
+/// MSVC reverses the whole group, Itanium keeps it.
+fn group(comptime ws: []const Want) []const Want {
+    if (!msvc) return ws;
+    return comptime blk: {
+        var r: [ws.len]Want = undefined;
+        for (ws, 0..) |w, i| r[ws.len - 1 - i] = w;
+        const out = r;
+        break :blk &out;
+    };
+}
+
+test "texture layouts match clang's" {
+    const BaseDraws = of.BaseDraws;
+    const Texture = of.Texture;
+    // `ofBaseDraws` declares five `draw`s, the two `ofTexture` overrides
+    // first; then the size and anchor functions, most overridden.
+    const tail = comptime &[_]Want{
+        m("getHeight", 0, Texture),
+        m("getWidth", 0, Texture),
+        m("getSize", 0, BaseDraws),
+        m("setAnchorPercent", 2, Texture),
+        m("setAnchorPoint", 2, Texture),
+        m("resetAnchor", 0, Texture),
+    };
+    const draws = comptime group(&.{
+        m("draw", 2, Texture),
+        m("draw", 4, Texture),
+        m("draw", 1, BaseDraws),
+        m("draw", 1, BaseDraws),
+        m("draw", 3, BaseDraws),
+    });
+    // `ofTexture`'s twelve `allocate` overloads, a new group of its own.
+    const allocates = comptime group(&.{
+        m("allocate", 1, Texture), m("allocate", 3, Texture),
+        m("allocate", 3, Texture), m("allocate", 5, Texture),
+        m("allocate", 4, Texture), m("allocate", 6, Texture),
+        m("allocate", 1, Texture), m("allocate", 2, Texture),
+        m("allocate", 1, Texture), m("allocate", 2, Texture),
+        m("allocate", 1, Texture), m("allocate", 2, Texture),
+    });
+    try expectLayout(Texture, d(Texture) ++ draws ++ tail ++ allocates);
+}
+
+// the new value types, which need no window
+
+test "buffer, path and texture handles" {
+    var buf = of.Buffer.init("v 0 0 0\n");
+    defer buf.deinit();
+    try std.testing.expectEqualStrings("v 0 0 0\n", buf.slice());
+    var empty = of.Buffer.initEmpty();
+    defer empty.deinit();
+    try std.testing.expectEqual(0, empty.len());
+
+    var p = of.string.Path.init("models/teapot.obj").?;
+    defer p.deinit();
+    var s = p.toString();
+    defer s.deinit();
+    try std.testing.expectEqualStrings("models/teapot.obj", s.slice());
+
+    // No GL texture until `allocate`, which needs a window.
+    var tex: of.Texture = undefined;
+    tex.init();
+    defer tex.deinit();
+    try std.testing.expect(!tex.isAllocated());
+    try std.testing.expectEqual(0, tex.getWidth());
+    try std.testing.expectEqual(0, tex.baseDraws().getWidth()); // the same call, through ofBaseDraws's vtable
+}
+
+test "assimp: a loader with no model" {
+    if (!options.assimp) return error.SkipZigTest;
+    const assimp = of.assimp;
+
+    var model: assimp.ModelLoader = undefined;
+    model.init();
+    defer model.deinit();
+    try std.testing.expect(!model.hasMeshes());
+    try std.testing.expect(!model.hasAnimations());
+    try std.testing.expectEqual(0, model.getMeshCount());
+    try std.testing.expectEqual(null, model.getMeshHelper(0));
+    try std.testing.expectEqual(null, model.getAnimation(0));
+    try std.testing.expectEqual(null, model.getAssimpScene());
+    var names = model.getMeshNames();
+    defer names.deinit();
+    try std.testing.expectEqual(0, names.items().len);
+
+    // The transform is plain data until a draw uses it.
+    model.setPosition(.{ 1, 2, 3 });
+    try std.testing.expectEqual(of.Vec3{ 1, 2, 3 }, model.getPosition());
+    model.setScale(.{ 2, 2, 2 });
+    try std.testing.expectEqual(of.Vec3{ 2, 2, 2 }, model.getScale());
+    // Radians in, radians out; the addon stores degrees between.
+    model.setRotation(1, std.math.pi / 2.0, .{ 0, 1, 0 });
+    try std.testing.expectEqual(2, model.getNumRotations());
+    try std.testing.expectApproxEqAbs(std.math.pi / 2.0, model.getRotationAngle(1), 1e-6);
+    try std.testing.expectEqual(of.Vec3{ 0, 1, 0 }, model.getRotationAxis(1));
+    try std.testing.expectEqual(0, model.getRotationAngle(0));
+
+    // A texture of a model's own, as `MeshHelper.addTexture` takes.
+    var t: assimp.AssimpTexture = undefined;
+    t.init();
+    defer t.deinit();
+    try std.testing.expect(!t.hasTexture());
+    t.setTextureType(.normals);
+    try std.testing.expectEqual(assimp.TextureType.normals, t.getTextureType());
+    try std.testing.expect(!t.getTextureRef().isAllocated());
+
+    try std.testing.expectEqual(@as(i32, 0x800008), @intFromEnum(assimp.LoadFlags.steps(.{ .triangulate = true, .flip_uvs = true })));
+}
+
 // layouts against the real vtables
 
 test "the vtables match every cpp_virtuals" {
@@ -153,7 +265,8 @@ test "the vtables match every cpp_virtuals" {
         Node,                  Camera,                   EasyCam,
         Light,                 Primitive,                BoxPrimitive,
         of.Mesh,               of.material.BaseMaterial, of.Material,
-        of.Font,               of.OfRectangle,
+        of.Font,               of.OfRectangle,           of.BaseDraws,
+        of.Texture,
     }) |T| {
         errdefer std.debug.print("{s}\n", .{@typeName(T)});
         try cpp.verifyVtable(T);
