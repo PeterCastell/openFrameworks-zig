@@ -19,10 +19,12 @@
 //! `glow.vert` and `glow.frag` (and `glow.geom`, if there is one), compiles
 //! them and links the program in one call.
 //!
-//! `of.run` opens an OpenGL 2.1 context with oF's fixed-function renderer,
-//! so a shader is GLSL 1.20 (`#version 120`) and reads oF's geometry through
-//! the compatibility built-ins: `gl_Vertex`, `gl_Normal`, `gl_Color`,
-//! `gl_MultiTexCoord0` and `gl_ModelViewProjectionMatrix`.
+//! By default `of.run` opens an OpenGL 2.1 context with oF's fixed-function
+//! renderer, so a shader is GLSL 1.20 (`#version 120`) and reads oF's
+//! geometry through the compatibility built-ins: `gl_Vertex`, `gl_Normal`,
+//! `gl_Color`, `gl_MultiTexCoord0` and `gl_ModelViewProjectionMatrix`. With
+//! `RunOptions.gl_version` 3.2 or higher, the context is core profile and the
+//! shader reads oF's uniforms and attributes instead; see `RunOptions`.
 //!
 //! A uniform is set on the program that is in use, so set it between
 //! `begin` and `end`. A name the program does not declare (or one the GLSL

@@ -22,6 +22,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const cpp = @import("cpp_bindgen");
 const Signature = cpp.Signature;
+/// The MSVC ABI and STL (Windows), or else Itanium with libc++ (macOS).
+const msvc = builtin.target.abi == .msvc;
+const SharedPtr = @import("memory.zig").SharedPtr;
 const events = @import("events.zig");
 const String = @import("string.zig").String;
 const Path = @import("string.zig").Path;
@@ -210,18 +213,120 @@ pub const RunOptions = struct {
     width: u32 = 1024,
     height: u32 = 768,
     mode: WindowMode = .window,
+    /// The OpenGL version to ask for.
+    ///
+    /// Below 3.2, oF draws with its fixed-function renderer
+    /// (`ofGLRenderer`): shaders are GLSL 1.20 and read oF's geometry and
+    /// matrices through the compatibility built-ins (`gl_Vertex`,
+    /// `gl_ModelViewMatrix` and the rest).
+    ///
+    /// 3.2 and up give a core-profile context and oF's programmable renderer
+    /// (`ofGLProgrammableRenderer`), which has no built-ins: it sets the
+    /// uniforms `modelViewMatrix`, `projectionMatrix`,
+    /// `modelViewProjectionMatrix`, `textureMatrix` and `globalColor` on the
+    /// shader in use, and feeds the attributes `position`, `color`, `normal`
+    /// and `texcoord`, which `Shader.load` binds to locations 0 to 3.
+    ///
+    /// macOS offers 2.1, or a core profile from 3.2 to 4.1.
+    gl_version: GLVersion = .{ .major = 2, .minor = 1 },
+};
+
+pub const GLVersion = struct {
+    major: u8,
+    minor: u8,
+};
+
+/// `ofAppBaseWindow`. Only ever held through the pointer `run` gets back.
+pub const AppBaseWindow = opaque {
+    pub const cpp_name = "ofAppBaseWindow";
+    pub const cpp_kind: cpp.Kind = .class;
+};
+
+/// `ofWindowSettings`: what a window is created with. `windowMode` is
+/// public; the title, size and position around it are bytes here, and the
+/// size is set with `setSize`.
+pub const WindowSettings = extern struct {
+    /// the vtable pointer and the `std::string` title
+    _head: [if (msvc) 40 else 32]u8 align(8),
+    windowMode: WindowMode,
+    /// width, height, whether the size was set, position, whether the position was set
+    _tail: [28]u8,
+
+    pub const cpp_name = "ofWindowSettings";
+    pub const cpp_kind: cpp.Kind = .class;
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_virtual_dtor = true;
+
+    /// Header-only, like the rest of the class; the glue emits it.
+    pub const setSize_sig: Signature = .{ .name = "setSize", .this = *WindowSettings, .args = &.{ i32, i32 } };
+    pub fn setSize(self: *WindowSettings, width: u32, height: u32) void {
+        cpp.bind(setSize_sig)(self, @intCast(width), @intCast(height));
+    }
+};
+
+/// `ofGLWindowSettings`: an `ofWindowSettings` with the OpenGL version to
+/// ask for. Construct it where it will live, and `deinit` it.
+pub const GLWindowSettings = extern struct {
+    _bases: cpp.BaseSpan(@This()) align(cpp.baseAlign(@This())),
+    glVersionMajor: i32,
+    glVersionMinor: i32,
+
+    pub const cpp_name = "ofGLWindowSettings";
+    pub const cpp_kind: cpp.Kind = .class;
+    pub const cpp_abi: cpp.ClassAbi = .managed_copy;
+    pub const cpp_bases: []const type = &.{WindowSettings};
+    pub const cpp_virtual_dtor = true;
+
+    /// The `ofWindowSettings` these are: the size and window mode.
+    pub fn settings(self: *GLWindowSettings) *WindowSettings {
+        return cpp.basePtr(WindowSettings, self);
+    }
+
+    /// The constructor and destructor are header-only; the glue emits them.
+    pub const ctor_sig: Signature = .{ .name = "*", .this = *GLWindowSettings };
+    /// A 1024 × 768 window asking for OpenGL 2.1.
+    pub fn init(self: *GLWindowSettings) void {
+        cpp.bind(ctor_sig)(self);
+    }
+    pub const dtor_sig: Signature = .{ .name = "~", .this = *GLWindowSettings };
+    pub fn deinit(self: *GLWindowSettings) void {
+        cpp.bind(dtor_sig)(self);
+    }
+};
+
+/// `ofCreateWindow(settings)`: starts oF and opens a window, which the main
+/// loop keeps and `ofRunApp` then runs the app in.
+pub const ofCreateWindow_sig: Signature = .{
+    .name = "ofCreateWindow",
+    .args = &.{cpp.Ref(*const WindowSettings)},
+    .ret = SharedPtr(AppBaseWindow),
 };
 
 /// Creates the window, runs the main loop with `app` as the application, and
-/// returns when the app exits. Equivalent to the classic
-/// `ofSetupOpenGL(w, h, mode); return ofRunApp(new App());` in main.cpp.
+/// returns when the app exits. Equivalent to the classic main.cpp: build an
+/// `ofGLWindowSettings`, `ofCreateWindow(settings)`, then
+/// `return ofRunApp(new App());`. With the default options this is exactly
+/// what `ofSetupOpenGL(w, h, mode)` does.
 ///
 /// `app` must outlive the call; it is not copied.
-pub const ofSetupOpenGL_sig: Signature = .{ .name = "ofSetupOpenGL", .args = &.{ i32, i32, WindowMode } };
 pub const ofRunApp_sig: Signature = .{ .name = "ofRunApp", .args = &.{*BaseApp}, .ret = i32 };
 pub fn run(comptime T: type, app: *T, opts: RunOptions) i32 {
     if (builtin.os.tag == .macos) useDataBesideExe();
-    cpp.bind(ofSetupOpenGL_sig)(@bitCast(opts.width), @bitCast(opts.height), opts.mode);
+
+    var gl_settings: GLWindowSettings = undefined;
+    gl_settings.init();
+    gl_settings.glVersionMajor = opts.gl_version.major;
+    gl_settings.glVersionMinor = opts.gl_version.minor;
+    const settings = gl_settings.settings();
+    settings.setSize(opts.width, opts.height);
+    settings.windowMode = opts.mode;
+    // The main loop keeps its own reference to the window. This one is
+    // never released, since std::shared_ptr's destructor isn't bound, but
+    // the window lasts until the process exits anyway.
+    var window: SharedPtr(AppBaseWindow) = undefined;
+    cpp.bind(ofCreateWindow_sig)(&window, settings);
+    gl_settings.deinit();
+
     const S = AppBase(T);
     S.instance = .{ .cpp = undefined, .app = app };
     S.instance.cpp.init();
