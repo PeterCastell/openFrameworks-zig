@@ -249,8 +249,12 @@ pub const WindowSettings = extern struct {
     /// the vtable pointer and the `std::string` title
     _head: [if (msvc) 40 else 32]u8 align(8),
     windowMode: WindowMode,
-    /// width, height, whether the size was set, position, whether the position was set
-    _tail: [28]u8,
+    /// width, height, whether the size was set, position, whether the
+    /// position was set. MSVC pads that last flag out to the class's
+    /// alignment; Itanium leaves the padding to a derived class, and
+    /// `ofGLWindowSettings` packs its version there, so the class must end
+    /// right after the flag.
+    _tail: [if (msvc) 28 else 21]u8,
 
     pub const cpp_name = "ofWindowSettings";
     pub const cpp_kind: cpp.Kind = .class;
